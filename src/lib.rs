@@ -1,0 +1,359 @@
+use std::cell::RefCell;
+use std::error::Error as StdError;
+use std::fmt;
+use std::result::Result as StdResult;
+
+/// An argument parser.
+pub struct Options<'a> {
+    args: &'a [String],
+    /// State information.
+    state: RefCell<State<'a>>,
+}
+
+#[derive(Default)]
+struct State<'a> {
+    /// Index in `args`.
+    position: usize,
+    /// Byte offset in `args[0]`, for parsing multiple short options
+    /// in one string.
+    index: usize,
+    /// Whether we are done parsing options.
+    done: bool,
+    /// Whether we may get an argument.
+    may_get_arg: bool,
+    /// Whether we must get an argument.
+    must_get_arg: bool,
+    /// Last parsed option.
+    last_opt: Option<Opt<'a>>,
+}
+
+impl<'a> Options<'a> {
+    pub fn new(args: &[String]) -> Options {
+        Options {
+            args,
+            state: RefCell::new(State::default()),
+        }
+    }
+
+    /// Retrieves the next option. Returns `None` if there are no more
+    /// options.
+    pub fn next(&self) -> Option<Result<Opt<'a>>> {
+        let mut state = self.state.borrow_mut();
+        if state.done {
+            return None;
+        }
+        if state.position >= self.args.len() {
+            state.done = true;
+            return None;
+        }
+        if state.must_get_arg {
+            return Some(Err(Error::DoesNotRequireArg(state.last_opt.unwrap())));
+        }
+        let arg = &self.args[state.position];
+        let opt = if state.index == 0 {
+            if arg == "--" {
+                state.position += 1;
+                state.done = true;
+                return None;
+            } else if arg == "-" {
+                state.done = true;
+                return None;
+            } else if arg.starts_with("--") {
+                // Long option
+                if let Some(equals) = arg.find('=') {
+                    state.index = equals + 1;
+                    state.may_get_arg = true;
+                    state.must_get_arg = true;
+                    Opt::Long(&arg[2..equals])
+                } else {
+                    state.position += 1;
+                    state.may_get_arg = true;
+                    Opt::Long(&arg[2..])
+                }
+            } else if arg.starts_with('-') {
+                // Short option
+                let ch = arg[1..].chars().next().unwrap();
+                state.may_get_arg = true;
+                state.index = 1 + ch.len_utf8();
+                if state.index >= arg.len() {
+                    state.position += 1;
+                    state.index = 0;
+                }
+                Opt::Short(ch)
+            } else {
+                state.done = true;
+                return None;
+            }
+        } else {
+            // Another short option in the cluster
+            let ch = arg[state.index..].chars().next().unwrap();
+            state.may_get_arg = true;
+            state.index += ch.len_utf8();
+            if state.index >= arg.len() {
+                state.position += 1;
+                state.index = 0;
+            }
+            Opt::Short(ch)
+        };
+        state.last_opt = Some(opt);
+        Some(Ok(opt))
+    }
+
+    pub fn arg(&self) -> Result<&'a str> {
+        let mut state = self.state.borrow_mut();
+        if !state.may_get_arg || state.position >= self.args.len() {
+            return Err(Error::RequiresArg(state.last_opt.expect("No last option")));
+        }
+        let arg = &self.args[state.position][state.index..];
+        state.index = 0;
+        state.position += 1;
+        state.may_get_arg = false;
+        state.must_get_arg = false;
+        Ok(arg)
+    }
+
+    pub fn args(&self) -> &'a [String] {
+        let state = self.state.borrow();
+        if !state.done {
+            panic!("Option parsing is not complete");
+        }
+        &self.args[state.position..]
+    }
+}
+
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum Opt<'a> {
+    Short(char),
+    Long(&'a str),
+}
+
+impl fmt::Display for Opt<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Opt::Short(c) => write!(f, "-{}", c),
+            Opt::Long(s) => write!(f, "--{}", s),
+        }
+    }
+}
+
+// Error handling
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Error<'a> {
+    UnknownOpt(Opt<'a>),
+    RequiresArg(Opt<'a>),
+    DoesNotRequireArg(Opt<'a>),
+}
+
+impl fmt::Display for Error<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Error::UnknownOpt(opt) => write!(f, "unknown option: {}", opt),
+            Error::RequiresArg(opt) => write!(f, "option requires an argument: {}", opt),
+            Error::DoesNotRequireArg(opt) => {
+                write!(f, "option does not require an argument: {}", opt)
+            }
+        }
+    }
+}
+
+impl StdError for Error<'_> {}
+
+pub type Result<'a, T> = StdResult<T, Error<'a>>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Convert a slice of `&str` into a `Vec<String>` by cloning each
+    /// string.
+    fn args(arr: &[&str]) -> Vec<String> {
+        arr.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn no_options() {
+        let args = args(&["foo", "bar"]);
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.args(), &["foo", "bar"]);
+    }
+
+    #[test]
+    fn short_options() {
+        let args = args(&["-a", "-b", "-3", "-@", "bar"]);
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('b'))));
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('3'))));
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('@'))));
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.args(), &["bar"]);
+    }
+
+    #[test]
+    fn short_cluster() {
+        let args = args(&["-ab3@", "bar"]);
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('b'))));
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('3'))));
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('@'))));
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.args(), &["bar"]);
+    }
+
+    #[test]
+    fn long_options() {
+        let args = args(&["--ay", "--bee", "--see", "--@3", "bar"]);
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
+        assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
+        assert_eq!(opts.next(), Some(Ok(Opt::Long("see"))));
+        assert_eq!(opts.next(), Some(Ok(Opt::Long("@3"))));
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.args(), &["bar"]);
+    }
+
+    #[test]
+    fn short_option_with_arg() {
+        let args = args(&["-a", "ay", "-b", "bee", "bar"]);
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+        assert_eq!(opts.arg(), Ok("ay"));
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('b'))));
+        assert_eq!(opts.arg(), Ok("bee"));
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.args(), &["bar"]);
+    }
+
+    #[test]
+    fn short_cluster_with_arg() {
+        let args = args(&["-aay", "-3bbee", "bar"]);
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+        assert_eq!(opts.arg(), Ok("ay"));
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('3'))));
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('b'))));
+        assert_eq!(opts.arg(), Ok("bee"));
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.args(), &["bar"]);
+    }
+
+    #[test]
+    fn long_option_with_arg() {
+        let args = args(&["--ay", "Ay", "--bee=Bee", "--see", "See", "bar"]);
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
+        assert_eq!(opts.arg(), Ok("Ay"));
+        assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
+        assert_eq!(opts.arg(), Ok("Bee"));
+        assert_eq!(opts.next(), Some(Ok(Opt::Long("see"))));
+        assert_eq!(opts.arg(), Ok("See"));
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.args(), &["bar"]);
+    }
+
+    #[test]
+    fn arg_with_dash() {
+        let args = args(&[
+            "-a",
+            "-ay",
+            "--bee=--Bee",
+            "--see",
+            "--See",
+            "-d-dee",
+            "bar",
+        ]);
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+        assert_eq!(opts.arg(), Ok("-ay"));
+        assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
+        assert_eq!(opts.arg(), Ok("--Bee"));
+        assert_eq!(opts.next(), Some(Ok(Opt::Long("see"))));
+        assert_eq!(opts.arg(), Ok("--See"));
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('d'))));
+        assert_eq!(opts.arg(), Ok("-dee"));
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.args(), &["bar"]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn multiple_args() {
+        let args = args(&["-a", "ay", "ay2", "bar"]);
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+        assert_eq!(opts.arg(), Ok("-ay"));
+        let _ = opts.arg(); // cannot get 2 arguments
+    }
+
+    #[test]
+    fn no_positional() {
+        let args = args(&["-a", "ay"]);
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+        assert_eq!(opts.arg(), Ok("ay"));
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.args(), &[] as &[&str]);
+    }
+
+    #[test]
+    fn long_option_with_empty_arg() {
+        let args = args(&["--ay=", "--bee", "", "bar"]);
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
+        assert_eq!(opts.arg(), Ok(""));
+        assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
+        assert_eq!(opts.arg(), Ok(""));
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.args(), &["bar"]);
+    }
+
+    #[test]
+    fn short_option_with_missing_arg() {
+        let args = args(&["-a"]);
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+        assert_eq!(opts.arg(), Err(Error::RequiresArg(Opt::Short('a'))));
+    }
+
+    #[test]
+    fn long_option_with_unexpected_arg() {
+        let args = args(&["--ay=Ay", "bar"]);
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
+        assert_eq!(
+            opts.next(),
+            Some(Err(Error::DoesNotRequireArg(Opt::Long("ay")))),
+        );
+    }
+
+    #[test]
+    fn long_option_with_missing_arg() {
+        let args = args(&["--ay"]);
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
+        assert_eq!(opts.arg(), Err(Error::RequiresArg(Opt::Long("ay"))));
+    }
+
+    #[test]
+    fn end_of_options() {
+        let args = args(&["-a", "--bee", "--", "--see", "-d"]);
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+        assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.args(), &["--see", "-d"]);
+    }
+
+    #[test]
+    fn lone_dash() {
+        let args = args(&["-a", "--bee", "-", "--see", "-d"]);
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+        assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.args(), &["-", "--see", "-d"]);
+    }
+}
