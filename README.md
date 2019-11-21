@@ -12,7 +12,6 @@ use getargs::{Error, Opt, Options, Result};
 #[derive(Default, Debug)]
 struct MyArgsStruct<'a> {
     attack_mode: bool,
-    suppress_bees: bool,
     em_dashes: bool,
     execute: &'a str,
 }
@@ -23,8 +22,6 @@ fn parse_args<'a>(opts: &'a Options<'a>) -> Result<MyArgsStruct<'a>> {
         match opt? {
             // -a or --attack
             Opt::Short('a') | Opt::Long("attack") => res.attack_mode = true,
-            // -b
-            Opt::Short('b') => res.suppress_bees = true,
             // Unicode short options are supported
             Opt::Short('\u{2014}') => res.em_dashes = true,
             // -e EXPRESSION, or -eEXPRESSION, or
