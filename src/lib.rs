@@ -23,6 +23,7 @@ struct MyArgsStruct<'a> {
     attack_mode: bool,
     em_dashes: bool,
     execute: &'a str,
+    positional_args: &'a [String],
 }
 
 fn parse_args<'a>(opts: &'a Options<'a>) -> Result<MyArgsStruct<'a>> {
@@ -40,6 +41,7 @@ fn parse_args<'a>(opts: &'a Options<'a>) -> Result<MyArgsStruct<'a>> {
             opt => return Err(Error::UnknownOpt(opt)),
         }
     }
+    res.positional_args = opts.args();
     Ok(res)
 }
 
