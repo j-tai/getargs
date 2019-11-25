@@ -6,7 +6,7 @@ A truly zero-cost argument parser.
 `getargs` is a low-level, efficient, and versatile argument parser
 that works similarly to "getopts". It works by producing a stream
 of options, and after each option, your code decides whether to
-retrieve the argument for the option or not.
+require and retrieve the value for the option or not.
 
 You do not have to declare a list of valid options. Therefore, you
 write your own help message.
@@ -36,7 +36,7 @@ fn parse_args<'a>(opts: &'a Options<'a>) -> Result<MyArgsStruct<'a>> {
             Opt::Short('\u{2014}') => res.em_dashes = true,
             // -e EXPRESSION, or -eEXPRESSION, or
             // --execute EXPRESSION, or --execute=EXPRESSION
-            Opt::Short('e') | Opt::Long("execute") => res.execute = opts.arg()?,
+            Opt::Short('e') | Opt::Long("execute") => res.execute = opts.value()?,
             // An unknown option was passed
             opt => return Err(Error::UnknownOpt(opt)),
         }
@@ -84,9 +84,9 @@ struct State<'a> {
     /// Whether we are done parsing options.
     done: bool,
     /// Whether we may get an argument.
-    may_get_arg: bool,
+    may_get_value: bool,
     /// Whether we must get an argument.
-    must_get_arg: bool,
+    must_get_value: bool,
     /// Last parsed option.
     last_opt: Option<Opt<'a>>,
 }
@@ -113,8 +113,8 @@ impl<'a> Options<'a> {
     ///
     /// This method does not retrieve any value that goes with the
     /// option. If the option requires an value, such as in
-    /// `--option=value`, then you should call [`arg`](#method.arg)
-    /// after getting the option.
+    /// `--option=value`, then you should call
+    /// [`value`](#method.value) after getting the option.
     pub fn next(&self) -> Option<Result<Opt<'a>>> {
         let mut state = self.state.borrow_mut();
         if state.done {
@@ -124,8 +124,8 @@ impl<'a> Options<'a> {
             state.done = true;
             return None;
         }
-        if state.must_get_arg {
-            return Some(Err(Error::DoesNotRequireArg(state.last_opt.unwrap())));
+        if state.must_get_value {
+            return Some(Err(Error::DoesNotRequireValue(state.last_opt.unwrap())));
         }
         let arg = &self.args[state.position];
         let opt = if state.index == 0 {
@@ -140,18 +140,18 @@ impl<'a> Options<'a> {
                 // Long option
                 if let Some(equals) = arg.find('=') {
                     state.index = equals + 1;
-                    state.may_get_arg = true;
-                    state.must_get_arg = true;
+                    state.may_get_value = true;
+                    state.must_get_value = true;
                     Opt::Long(&arg[2..equals])
                 } else {
                     state.position += 1;
-                    state.may_get_arg = true;
+                    state.may_get_value = true;
                     Opt::Long(&arg[2..])
                 }
             } else if arg.starts_with('-') {
                 // Short option
                 let ch = arg[1..].chars().next().unwrap();
-                state.may_get_arg = true;
+                state.may_get_value = true;
                 state.index = 1 + ch.len_utf8();
                 if state.index >= arg.len() {
                     state.position += 1;
@@ -165,7 +165,7 @@ impl<'a> Options<'a> {
         } else {
             // Another short option in the cluster
             let ch = arg[state.index..].chars().next().unwrap();
-            state.may_get_arg = true;
+            state.may_get_value = true;
             state.index += ch.len_utf8();
             if state.index >= arg.len() {
                 state.position += 1;
@@ -189,21 +189,21 @@ impl<'a> Options<'a> {
     ///
     /// This method panics if [`next`](#method.next) has not yet been
     /// called.
-    pub fn arg(&self) -> Result<&'a str> {
+    pub fn value(&self) -> Result<&'a str> {
         let mut state = self.state.borrow_mut();
-        if !state.may_get_arg || state.position >= self.args.len() {
-            return Err(Error::RequiresArg(state.last_opt.expect("No last option")));
+        if !state.may_get_value || state.position >= self.args.len() {
+            return Err(Error::RequiresValue(state.last_opt.expect("No last option")));
         }
-        let arg = &self.args[state.position][state.index..];
+        let value = &self.args[state.position][state.index..];
         state.index = 0;
         state.position += 1;
-        state.may_get_arg = false;
-        state.must_get_arg = false;
-        Ok(arg)
+        state.may_get_value = false;
+        state.must_get_value = false;
+        Ok(value)
     }
 
-    /// Retrieve the positional arguments after the options have been
-    /// parsed.
+    /// Retrieves the positional arguments, after the options have
+    /// been parsed.
     ///
     /// This method returns the list of arguments after the parsed
     /// options.
@@ -227,7 +227,7 @@ impl<'a> Options<'a> {
 pub enum Opt<'a> {
     /// A short option, as in `-a`.
     Short(char),
-    /// A long option, as in `--attack-mode`.
+    /// A long option, as in `--attack`.
     Long(&'a str),
 }
 
@@ -248,18 +248,18 @@ pub enum Error<'a> {
     /// An unknown option was passed.
     UnknownOpt(Opt<'a>),
     /// The option requires a value, but one was not supplied.
-    RequiresArg(Opt<'a>),
+    RequiresValue(Opt<'a>),
     /// The option does not require a value, but one was supplied.
-    DoesNotRequireArg(Opt<'a>),
+    DoesNotRequireValue(Opt<'a>),
 }
 
 impl fmt::Display for Error<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Error::UnknownOpt(opt) => write!(f, "unknown option: {}", opt),
-            Error::RequiresArg(opt) => write!(f, "option requires an argument: {}", opt),
-            Error::DoesNotRequireArg(opt) => {
-                write!(f, "option does not require an argument: {}", opt)
+            Error::RequiresValue(opt) => write!(f, "option requires a value: {}", opt),
+            Error::DoesNotRequireValue(opt) => {
+                write!(f, "option does not require a value: {}", opt)
             }
         }
     }
@@ -324,46 +324,46 @@ mod tests {
     }
 
     #[test]
-    fn short_option_with_arg() {
+    fn short_option_with_value() {
         let args = args(&["-a", "ay", "-b", "bee", "bar"]);
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-        assert_eq!(opts.arg(), Ok("ay"));
+        assert_eq!(opts.value(), Ok("ay"));
         assert_eq!(opts.next(), Some(Ok(Opt::Short('b'))));
-        assert_eq!(opts.arg(), Ok("bee"));
+        assert_eq!(opts.value(), Ok("bee"));
         assert_eq!(opts.next(), None);
         assert_eq!(opts.args(), &["bar"]);
     }
 
     #[test]
-    fn short_cluster_with_arg() {
+    fn short_cluster_with_value() {
         let args = args(&["-aay", "-3bbee", "bar"]);
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-        assert_eq!(opts.arg(), Ok("ay"));
+        assert_eq!(opts.value(), Ok("ay"));
         assert_eq!(opts.next(), Some(Ok(Opt::Short('3'))));
         assert_eq!(opts.next(), Some(Ok(Opt::Short('b'))));
-        assert_eq!(opts.arg(), Ok("bee"));
+        assert_eq!(opts.value(), Ok("bee"));
         assert_eq!(opts.next(), None);
         assert_eq!(opts.args(), &["bar"]);
     }
 
     #[test]
-    fn long_option_with_arg() {
+    fn long_option_with_value() {
         let args = args(&["--ay", "Ay", "--bee=Bee", "--see", "See", "bar"]);
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
-        assert_eq!(opts.arg(), Ok("Ay"));
+        assert_eq!(opts.value(), Ok("Ay"));
         assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
-        assert_eq!(opts.arg(), Ok("Bee"));
+        assert_eq!(opts.value(), Ok("Bee"));
         assert_eq!(opts.next(), Some(Ok(Opt::Long("see"))));
-        assert_eq!(opts.arg(), Ok("See"));
+        assert_eq!(opts.value(), Ok("See"));
         assert_eq!(opts.next(), None);
         assert_eq!(opts.args(), &["bar"]);
     }
 
     #[test]
-    fn arg_with_dash() {
+    fn value_with_dash() {
         let args = args(&[
             "-a",
             "-ay",
@@ -375,13 +375,13 @@ mod tests {
         ]);
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-        assert_eq!(opts.arg(), Ok("-ay"));
+        assert_eq!(opts.value(), Ok("-ay"));
         assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
-        assert_eq!(opts.arg(), Ok("--Bee"));
+        assert_eq!(opts.value(), Ok("--Bee"));
         assert_eq!(opts.next(), Some(Ok(Opt::Long("see"))));
-        assert_eq!(opts.arg(), Ok("--See"));
+        assert_eq!(opts.value(), Ok("--See"));
         assert_eq!(opts.next(), Some(Ok(Opt::Short('d'))));
-        assert_eq!(opts.arg(), Ok("-dee"));
+        assert_eq!(opts.value(), Ok("-dee"));
         assert_eq!(opts.next(), None);
         assert_eq!(opts.args(), &["bar"]);
     }
@@ -392,8 +392,8 @@ mod tests {
         let args = args(&["-a", "ay", "ay2", "bar"]);
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-        assert_eq!(opts.arg(), Ok("-ay"));
-        let _ = opts.arg(); // cannot get 2 arguments
+        assert_eq!(opts.value(), Ok("-ay"));
+        let _ = opts.value(); // cannot get 2 arguments
     }
 
     #[test]
@@ -401,48 +401,48 @@ mod tests {
         let args = args(&["-a", "ay"]);
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-        assert_eq!(opts.arg(), Ok("ay"));
+        assert_eq!(opts.value(), Ok("ay"));
         assert_eq!(opts.next(), None);
         assert_eq!(opts.args(), &[] as &[&str]);
     }
 
     #[test]
-    fn long_option_with_empty_arg() {
+    fn long_option_with_empty_value() {
         let args = args(&["--ay=", "--bee", "", "bar"]);
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
-        assert_eq!(opts.arg(), Ok(""));
+        assert_eq!(opts.value(), Ok(""));
         assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
-        assert_eq!(opts.arg(), Ok(""));
+        assert_eq!(opts.value(), Ok(""));
         assert_eq!(opts.next(), None);
         assert_eq!(opts.args(), &["bar"]);
     }
 
     #[test]
-    fn short_option_with_missing_arg() {
+    fn short_option_with_missing_value() {
         let args = args(&["-a"]);
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-        assert_eq!(opts.arg(), Err(Error::RequiresArg(Opt::Short('a'))));
+        assert_eq!(opts.value(), Err(Error::RequiresValue(Opt::Short('a'))));
     }
 
     #[test]
-    fn long_option_with_unexpected_arg() {
+    fn long_option_with_unexpected_value() {
         let args = args(&["--ay=Ay", "bar"]);
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
         assert_eq!(
             opts.next(),
-            Some(Err(Error::DoesNotRequireArg(Opt::Long("ay")))),
+            Some(Err(Error::DoesNotRequireValue(Opt::Long("ay")))),
         );
     }
 
     #[test]
-    fn long_option_with_missing_arg() {
+    fn long_option_with_missing_value() {
         let args = args(&["--ay"]);
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
-        assert_eq!(opts.arg(), Err(Error::RequiresArg(Opt::Long("ay"))));
+        assert_eq!(opts.value(), Err(Error::RequiresValue(Opt::Long("ay"))));
     }
 
     #[test]
