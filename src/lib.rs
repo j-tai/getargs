@@ -66,6 +66,8 @@ use std::fmt;
 use std::result::Result as StdResult;
 
 /// An argument parser.
+///
+/// See the [crate documentation](index.html) for more details.
 pub struct Options<'a> {
     args: &'a [String],
     /// State information.
@@ -90,6 +92,10 @@ struct State<'a> {
 }
 
 impl<'a> Options<'a> {
+    /// Creates a new argument parser given the slice of arguments.
+    ///
+    /// The argument parser only lives as long as the slice of
+    /// arguments.
     pub fn new(args: &[String]) -> Options {
         Options {
             args,
@@ -97,8 +103,18 @@ impl<'a> Options<'a> {
         }
     }
 
-    /// Retrieves the next option. Returns `None` if there are no more
-    /// options.
+    /// Retrieves the next option.
+    ///
+    /// Returns `None` if there are no more options. Returns
+    /// `Some(Err(..))` if a parse error occurs.
+    ///
+    /// This method mutates the state of the parser (despite taking a
+    /// shared reference to self).
+    ///
+    /// This method does not retrieve any value that goes with the
+    /// option. If the option requires an value, such as in
+    /// `--option=value`, then you should call [`arg`](#method.arg)
+    /// after getting the option.
     pub fn next(&self) -> Option<Result<Opt<'a>>> {
         let mut state = self.state.borrow_mut();
         if state.done {
@@ -161,6 +177,18 @@ impl<'a> Options<'a> {
         Some(Ok(opt))
     }
 
+    /// Retrieve the value passed for this option.
+    ///
+    /// This function returns an error if there is no value to return
+    /// because the end of the argument list has been reached.
+    ///
+    /// This function is not pure, and it mutates the state of the
+    /// parser (despite taking a shared reference to self).
+    ///
+    /// # Panics
+    ///
+    /// This method panics if [`next`](#method.next) has not yet been
+    /// called.
     pub fn arg(&self) -> Result<&'a str> {
         let mut state = self.state.borrow_mut();
         if !state.may_get_arg || state.position >= self.args.len() {
@@ -174,6 +202,17 @@ impl<'a> Options<'a> {
         Ok(arg)
     }
 
+    /// Retrieve the positional arguments after the options have been
+    /// parsed.
+    ///
+    /// This method returns the list of arguments after the parsed
+    /// options.
+    ///
+    /// # Panics
+    ///
+    /// This method panics if the option parsing is not yet complete;
+    /// that is, it panics if [`next`](#method.next) has not yet
+    /// returned `None` at least once.
     pub fn args(&self) -> &'a [String] {
         let state = self.state.borrow();
         if !state.done {
@@ -183,9 +222,12 @@ impl<'a> Options<'a> {
     }
 }
 
+/// A short or long option.
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Opt<'a> {
+    /// A short option, as in `-a`.
     Short(char),
+    /// A long option, as in `--attack-mode`.
     Long(&'a str),
 }
 
@@ -200,10 +242,14 @@ impl fmt::Display for Opt<'_> {
 
 // Error handling
 
+/// A parse error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error<'a> {
+    /// An unknown option was passed.
     UnknownOpt(Opt<'a>),
+    /// The option requires a value, but one was not supplied.
     RequiresArg(Opt<'a>),
+    /// The option does not require a value, but one was supplied.
     DoesNotRequireArg(Opt<'a>),
 }
 
@@ -227,8 +273,8 @@ pub type Result<'a, T> = StdResult<T, Error<'a>>;
 mod tests {
     use super::*;
 
-    /// Convert a slice of `&str` into a `Vec<String>` by cloning each
-    /// string.
+    /// Converts a slice of `&str` into a `Vec<String>` by cloning
+    /// each string.
     fn args(arr: &[&str]) -> Vec<String> {
         arr.iter().map(|s| s.to_string()).collect()
     }
