@@ -115,6 +115,19 @@ impl<'a> Options<'a> {
     /// option. If the option requires an value, such as in
     /// `--option=value`, then you should call
     /// [`value`](#method.value) after getting the option.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// use getargs::{Opt, Options};
+    /// let args = ["-a".to_string(), "--bee".to_string(), "foo".to_string()];
+    /// let opts = Options::new(&args);
+    /// assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+    /// assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
+    /// assert_eq!(opts.next(), None);
+    /// ```
     pub fn next(&self) -> Option<Result<Opt<'a>>> {
         let mut state = self.state.borrow_mut();
         if state.done {
@@ -189,6 +202,22 @@ impl<'a> Options<'a> {
     ///
     /// This method panics if [`next`](#method.next) has not yet been
     /// called, or it is called twice for the same option.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// use getargs::{Opt, Options};
+    /// let args = ["-aay".to_string(), "--bee=foo".to_string(), "-c".to_string(), "see".to_string(), "bar".to_string()];
+    /// let opts = Options::new(&args);
+    /// assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+    /// assert_eq!(opts.value(), Ok("ay"));
+    /// assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
+    /// assert_eq!(opts.value(), Ok("foo"));
+    /// assert_eq!(opts.next(), Some(Ok(Opt::Short('c'))));
+    /// assert_eq!(opts.value(), Ok("see"));
+    /// ```
     pub fn value(&self) -> Result<&'a str> {
         let mut state = self.state.borrow_mut();
         if !state.may_get_value || state.position >= self.args.len() {
@@ -218,6 +247,19 @@ impl<'a> Options<'a> {
     /// This method panics if the option parsing is not yet complete;
     /// that is, it panics if [`next`](#method.next) has not yet
     /// returned `None` at least once.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// use getargs::{Opt, Options};
+    /// let args = ["-a".to_string(), "foo".to_string(), "bar".to_string()];
+    /// let opts = Options::new(&args);
+    /// assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+    /// assert_eq!(opts.next(), None);
+    /// assert_eq!(opts.args(), &["foo", "bar"]);
+    /// ```
     pub fn args(&self) -> &'a [String] {
         let state = self.state.borrow();
         if !state.done {
