@@ -26,7 +26,7 @@ struct MyArgsStruct<'a> {
     positional_args: &'a [String],
 }
 
-fn parse_args<'a>(opts: &'a Options<'a>) -> Result<MyArgsStruct<'a>> {
+fn parse_args<'a>(opts: &'a Options<'a, String>) -> Result<MyArgsStruct<'a>> {
     let mut res = MyArgsStruct::default();
     while let Some(opt) = opts.next() {
         match opt? {
@@ -68,8 +68,11 @@ use std::result::Result as StdResult;
 /// An argument parser.
 ///
 /// See the [crate documentation](index.html) for more details.
-pub struct Options<'a> {
-    args: &'a [String],
+pub struct Options<'a, S>
+where
+    S: AsRef<str>,
+{
+    args: &'a [S],
     /// State information.
     state: RefCell<State<'a>>,
 }
@@ -91,12 +94,15 @@ struct State<'a> {
     last_opt: Option<Opt<'a>>,
 }
 
-impl<'a> Options<'a> {
+impl<'a, S> Options<'a, S>
+where
+    S: AsRef<str>,
+{
     /// Creates a new argument parser given the slice of arguments.
     ///
     /// The argument parser only lives as long as the slice of
     /// arguments.
-    pub fn new(args: &[String]) -> Options {
+    pub fn new(args: &[S]) -> Options<S> {
         Options {
             args,
             state: RefCell::new(State::default()),
@@ -122,7 +128,7 @@ impl<'a> Options<'a> {
     ///
     /// ```
     /// use getargs::{Opt, Options};
-    /// let args = ["-a".to_string(), "--bee".to_string(), "foo".to_string()];
+    /// let args = ["-a", "--bee", "foo"];
     /// let opts = Options::new(&args);
     /// assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
     /// assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
@@ -140,7 +146,7 @@ impl<'a> Options<'a> {
         if state.must_get_value {
             return Some(Err(Error::DoesNotRequireValue(state.last_opt.unwrap())));
         }
-        let arg = &self.args[state.position];
+        let arg = self.args[state.position].as_ref();
         let opt = if state.index == 0 {
             if arg == "--" {
                 state.position += 1;
@@ -209,7 +215,7 @@ impl<'a> Options<'a> {
     ///
     /// ```
     /// use getargs::{Opt, Options};
-    /// let args = ["-aay".to_string(), "--bee=foo".to_string(), "-c".to_string(), "see".to_string(), "bar".to_string()];
+    /// let args = ["-aay", "--bee=foo", "-c", "see", "bar"];
     /// let opts = Options::new(&args);
     /// assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
     /// assert_eq!(opts.value(), Ok("ay"));
@@ -227,7 +233,7 @@ impl<'a> Options<'a> {
                 panic!("called value() before next()")
             }
         }
-        let value = &self.args[state.position][state.index..];
+        let value = &self.args[state.position].as_ref()[state.index..];
         state.index = 0;
         state.position += 1;
         state.may_get_value = false;
@@ -254,13 +260,13 @@ impl<'a> Options<'a> {
     ///
     /// ```
     /// use getargs::{Opt, Options};
-    /// let args = ["-a".to_string(), "foo".to_string(), "bar".to_string()];
+    /// let args = ["-a", "foo", "bar"];
     /// let opts = Options::new(&args);
     /// assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
     /// assert_eq!(opts.next(), None);
     /// assert_eq!(opts.args(), &["foo", "bar"]);
     /// ```
-    pub fn args(&self) -> &'a [String] {
+    pub fn args(&self) -> &'a [S] {
         let state = self.state.borrow();
         if !state.done {
             panic!("Option parsing is not complete");
@@ -320,15 +326,9 @@ pub type Result<'a, T> = StdResult<T, Error<'a>>;
 mod tests {
     use super::*;
 
-    /// Converts a slice of `&str` into a `Vec<String>` by cloning
-    /// each string.
-    fn args(arr: &[&str]) -> Vec<String> {
-        arr.iter().map(|s| s.to_string()).collect()
-    }
-
     #[test]
     fn no_options() {
-        let args = args(&["foo", "bar"]);
+        let args = ["foo", "bar"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), None);
         assert_eq!(opts.args(), &["foo", "bar"]);
@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn short_options() {
-        let args = args(&["-a", "-b", "-3", "-@", "bar"]);
+        let args = ["-a", "-b", "-3", "-@", "bar"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
         assert_eq!(opts.next(), Some(Ok(Opt::Short('b'))));
@@ -348,7 +348,7 @@ mod tests {
 
     #[test]
     fn short_cluster() {
-        let args = args(&["-ab3@", "bar"]);
+        let args = ["-ab3@", "bar"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
         assert_eq!(opts.next(), Some(Ok(Opt::Short('b'))));
@@ -360,7 +360,7 @@ mod tests {
 
     #[test]
     fn long_options() {
-        let args = args(&["--ay", "--bee", "--see", "--@3", "bar"]);
+        let args = ["--ay", "--bee", "--see", "--@3", "bar"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
         assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
@@ -372,7 +372,7 @@ mod tests {
 
     #[test]
     fn short_option_with_value() {
-        let args = args(&["-a", "ay", "-b", "bee", "bar"]);
+        let args = ["-a", "ay", "-b", "bee", "bar"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
         assert_eq!(opts.value(), Ok("ay"));
@@ -384,7 +384,7 @@ mod tests {
 
     #[test]
     fn short_cluster_with_value() {
-        let args = args(&["-aay", "-3bbee", "bar"]);
+        let args = ["-aay", "-3bbee", "bar"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
         assert_eq!(opts.value(), Ok("ay"));
@@ -397,7 +397,7 @@ mod tests {
 
     #[test]
     fn long_option_with_value() {
-        let args = args(&["--ay", "Ay", "--bee=Bee", "--see", "See", "bar"]);
+        let args = ["--ay", "Ay", "--bee=Bee", "--see", "See", "bar"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
         assert_eq!(opts.value(), Ok("Ay"));
@@ -411,7 +411,7 @@ mod tests {
 
     #[test]
     fn value_with_dash() {
-        let args = args(&[
+        let args = [
             "-a",
             "-ay",
             "--bee=--Bee",
@@ -419,7 +419,7 @@ mod tests {
             "--See",
             "-d-dee",
             "bar",
-        ]);
+        ];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
         assert_eq!(opts.value(), Ok("-ay"));
@@ -436,7 +436,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn multiple_values() {
-        let args = args(&["-a", "ay", "ay2", "bar"]);
+        let args = ["-a", "ay", "ay2", "bar"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
         assert_eq!(opts.value(), Ok("ay"));
@@ -445,7 +445,7 @@ mod tests {
 
     #[test]
     fn no_positional() {
-        let args = args(&["-a", "ay"]);
+        let args = ["-a", "ay"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
         assert_eq!(opts.value(), Ok("ay"));
@@ -455,7 +455,7 @@ mod tests {
 
     #[test]
     fn long_option_with_empty_value() {
-        let args = args(&["--ay=", "--bee", "", "bar"]);
+        let args = ["--ay=", "--bee", "", "bar"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
         assert_eq!(opts.value(), Ok(""));
@@ -467,7 +467,7 @@ mod tests {
 
     #[test]
     fn short_option_with_missing_value() {
-        let args = args(&["-a"]);
+        let args = ["-a"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
         assert_eq!(opts.value(), Err(Error::RequiresValue(Opt::Short('a'))));
@@ -475,7 +475,7 @@ mod tests {
 
     #[test]
     fn long_option_with_unexpected_value() {
-        let args = args(&["--ay=Ay", "bar"]);
+        let args = ["--ay=Ay", "bar"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
         assert_eq!(
@@ -486,7 +486,7 @@ mod tests {
 
     #[test]
     fn long_option_with_missing_value() {
-        let args = args(&["--ay"]);
+        let args = ["--ay"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
         assert_eq!(opts.value(), Err(Error::RequiresValue(Opt::Long("ay"))));
@@ -494,7 +494,7 @@ mod tests {
 
     #[test]
     fn end_of_options() {
-        let args = args(&["-a", "--bee", "--", "--see", "-d"]);
+        let args = ["-a", "--bee", "--", "--see", "-d"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
         assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
@@ -504,7 +504,7 @@ mod tests {
 
     #[test]
     fn lone_dash() {
-        let args = args(&["-a", "--bee", "-", "--see", "-d"]);
+        let args = ["-a", "--bee", "-", "--see", "-d"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
         assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));

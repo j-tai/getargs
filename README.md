@@ -17,7 +17,7 @@ struct MyArgsStruct<'a> {
     positional_args: &'a [String],
 }
 
-fn parse_args<'a>(opts: &'a Options<'a>) -> Result<MyArgsStruct<'a>> {
+fn parse_args<'a>(opts: &'a Options<'a, String>) -> Result<MyArgsStruct<'a>> {
     let mut res = MyArgsStruct::default();
     while let Some(opt) = opts.next() {
         match opt? {
@@ -27,7 +27,7 @@ fn parse_args<'a>(opts: &'a Options<'a>) -> Result<MyArgsStruct<'a>> {
             Opt::Short('\u{2014}') => res.em_dashes = true,
             // -e EXPRESSION, or -eEXPRESSION, or
             // --execute EXPRESSION, or --execute=EXPRESSION
-            Opt::Short('e') | Opt::Long("execute") => res.execute = opts.arg()?,
+            Opt::Short('e') | Opt::Long("execute") => res.execute = opts.value()?,
             // An unknown option was passed
             opt => return Err(Error::UnknownOpt(opt)),
         }
