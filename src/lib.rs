@@ -188,17 +188,22 @@ impl<'a> Options<'a> {
     /// # Panics
     ///
     /// This method panics if [`next`](#method.next) has not yet been
-    /// called.
+    /// called, or it is called twice for the same option.
     pub fn value(&self) -> Result<&'a str> {
         let mut state = self.state.borrow_mut();
         if !state.may_get_value || state.position >= self.args.len() {
-            return Err(Error::RequiresValue(state.last_opt.expect("No last option")));
+            if let Some(opt) = state.last_opt {
+                return Err(Error::RequiresValue(opt));
+            } else {
+                panic!("called value() before next()")
+            }
         }
         let value = &self.args[state.position][state.index..];
         state.index = 0;
         state.position += 1;
         state.may_get_value = false;
         state.must_get_value = false;
+        state.last_opt = None;
         Ok(value)
     }
 
@@ -388,12 +393,12 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn multiple_args() {
+    fn multiple_values() {
         let args = args(&["-a", "ay", "ay2", "bar"]);
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-        assert_eq!(opts.value(), Ok("-ay"));
-        let _ = opts.value(); // cannot get 2 arguments
+        assert_eq!(opts.value(), Ok("ay"));
+        let _ = opts.value(); // cannot get 2 values
     }
 
     #[test]
