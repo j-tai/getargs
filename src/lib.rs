@@ -266,8 +266,59 @@ where
         }
     }
 
-    /// Retrieves the positional arguments, after the options have
-    /// been parsed.
+    /// Retrieves the next positional argument as a string, after the
+    /// options have been parsed.
+    ///
+    /// This method returns the next positional argument after the
+    /// parsed options as a string. This method must be called after
+    /// the options has finished parsing.
+    ///
+    /// After this method is called, this struct may be re-used to
+    /// parse further options with [`next`](#method.next), or you can
+    /// continue getting positional arguments (which will treat
+    /// options as regular positional arguments).
+    ///
+    /// This function is not pure, and it mutates the state of the
+    /// parser (despite taking a shared reference to self).
+    ///
+    /// # Panics
+    ///
+    /// This method panics if the option parsing is not yet complete;
+    /// that is, it panics if [`next`](#method.next) has not yet
+    /// returned `None` at least once.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// use getargs::{Opt, Options};
+    /// let args = ["-a", "foo", "bar"];
+    /// let opts = Options::new(&args);
+    /// assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+    /// assert_eq!(opts.next(), None);
+    /// assert_eq!(opts.arg(), Some(&"foo"));
+    /// assert_eq!(opts.arg(), Some(&"bar"));
+    /// assert_eq!(opts.arg(), None);
+    /// ```
+    pub fn arg(&self) -> Option<&'a S> {
+        let mut inner = self.inner.borrow_mut();
+        match inner.state {
+            State::Start => {
+                if inner.position >= self.args.len() {
+                    None
+                } else {
+                    let arg = &self.args[inner.position];
+                    inner.position += 1;
+                    Some(arg)
+                }
+            }
+            _ => panic!("called arg() while option parsing hasn't finished"),
+        }
+    }
+
+    /// Retrieves the rest of the positional arguments, after the
+    /// options have been parsed.
     ///
     /// This method returns the list of arguments after the parsed
     /// options.
