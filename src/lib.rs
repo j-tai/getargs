@@ -74,24 +74,34 @@ where
 {
     args: &'a [S],
     /// State information.
-    state: RefCell<State<'a>>,
+    inner: RefCell<OptionsInner<'a>>,
 }
 
-#[derive(Default)]
-struct State<'a> {
+struct OptionsInner<'a> {
     /// Index in `args`.
     position: usize,
-    /// Byte offset in `args[0]`, for parsing multiple short options
-    /// in one string.
-    index: usize,
-    /// Whether we are done parsing options.
-    done: bool,
-    /// Whether we may get an argument.
-    may_get_value: bool,
-    /// Whether we must get an argument.
-    must_get_value: bool,
-    /// Last parsed option.
-    last_opt: Option<Opt<'a>>,
+    /// The state information.
+    state: State<'a>,
+}
+
+enum State<'a> {
+    /// The starting state. We may not get a value because there is no
+    /// previous option. We may get a positional argument or an
+    /// option.
+    Start,
+    /// We have just finished parsing an option, be it short or long,
+    /// and we don't know whether the next argument is considered a
+    /// value for the option or a positional argument. From here, we
+    /// can get the next option, the next value, or the next
+    /// positional argument.
+    EndOfOption(Opt<'a>),
+    /// We are in the middle of a cluster of short options. From here,
+    /// we can get the next short option, or we can get the value for
+    /// the last short option. We may not get a positional argument.
+    ShortOptionCluster(Opt<'a>, usize),
+    /// We just consumed a long option with a value attached with `=`,
+    /// e.g. `--execute=expression`. We must get the following value.
+    LongOptionWithValue(Opt<'a>, usize),
 }
 
 impl<'a, S> Options<'a, S>
@@ -105,7 +115,10 @@ where
     pub fn new(args: &[S]) -> Options<S> {
         Options {
             args,
-            state: RefCell::new(State::default()),
+            inner: RefCell::new(OptionsInner {
+                position: 0,
+                state: State::Start,
+            }),
         }
     }
 
@@ -135,65 +148,71 @@ where
     /// assert_eq!(opts.next(), None);
     /// ```
     pub fn next(&self) -> Option<Result<Opt<'a>>> {
-        let mut state = self.state.borrow_mut();
-        if state.done {
-            return None;
-        }
-        if state.position >= self.args.len() {
-            state.done = true;
-            return None;
-        }
-        if state.must_get_value {
-            return Some(Err(Error::DoesNotRequireValue(state.last_opt.unwrap())));
-        }
-        let arg = self.args[state.position].as_ref();
-        let opt = if state.index == 0 {
-            if arg == "--" {
-                state.position += 1;
-                state.done = true;
-                return None;
-            } else if arg == "-" {
-                state.done = true;
-                return None;
-            } else if arg.starts_with("--") {
-                // Long option
-                if let Some(equals) = arg.find('=') {
-                    state.index = equals + 1;
-                    state.may_get_value = true;
-                    state.must_get_value = true;
-                    Opt::Long(&arg[2..equals])
+        let mut inner = self.inner.borrow_mut();
+        match inner.state {
+            State::Start | State::EndOfOption(_) => {
+                if inner.position >= self.args.len() {
+                    return None;
+                }
+                let arg = self.args[inner.position].as_ref();
+                if arg == "--" {
+                    // End of options
+                    inner.position += 1;
+                    inner.state = State::Start;
+                    None
+                } else if arg == "-" {
+                    // "-" is a positional argument
+                    inner.state = State::Start;
+                    None
+                } else if arg.starts_with("--") {
+                    // Long option
+                    if let Some(equals) = arg.find('=') {
+                        // Long option with value
+                        let opt = Opt::Long(&arg[2..equals]);
+                        inner.state = State::LongOptionWithValue(opt, equals + 1);
+                        Some(Ok(opt))
+                    } else {
+                        // Long option without value
+                        let opt = Opt::Long(&arg[2..]);
+                        inner.position += 1;
+                        inner.state = State::EndOfOption(opt);
+                        Some(Ok(opt))
+                    }
+                } else if arg.starts_with("-") {
+                    // Short option
+                    let ch = arg[1..].chars().next().unwrap();
+                    let opt = Opt::Short(ch);
+                    let index = 1 + ch.len_utf8();
+                    if index >= arg.len() {
+                        inner.position += 1;
+                        inner.state = State::EndOfOption(opt);
+                    } else {
+                        inner.state = State::ShortOptionCluster(opt, index);
+                    }
+                    Some(Ok(opt))
                 } else {
-                    state.position += 1;
-                    state.may_get_value = true;
-                    Opt::Long(&arg[2..])
+                    // Positional argument
+                    inner.state = State::Start;
+                    None
                 }
-            } else if arg.starts_with('-') {
-                // Short option
-                let ch = arg[1..].chars().next().unwrap();
-                state.may_get_value = true;
-                state.index = 1 + ch.len_utf8();
-                if state.index >= arg.len() {
-                    state.position += 1;
-                    state.index = 0;
+            }
+
+            State::ShortOptionCluster(_, index) => {
+                let arg = self.args[inner.position].as_ref();
+                let ch = arg[index..].chars().next().unwrap();
+                let opt = Opt::Short(ch);
+                let index = index + ch.len_utf8();
+                if index >= arg.len() {
+                    inner.position += 1;
+                    inner.state = State::EndOfOption(opt);
+                } else {
+                    inner.state = State::ShortOptionCluster(opt, index);
                 }
-                Opt::Short(ch)
-            } else {
-                state.done = true;
-                return None;
+                Some(Ok(opt))
             }
-        } else {
-            // Another short option in the cluster
-            let ch = arg[state.index..].chars().next().unwrap();
-            state.may_get_value = true;
-            state.index += ch.len_utf8();
-            if state.index >= arg.len() {
-                state.position += 1;
-                state.index = 0;
-            }
-            Opt::Short(ch)
-        };
-        state.last_opt = Some(opt);
-        Some(Ok(opt))
+
+            State::LongOptionWithValue(opt, _) => Some(Err(Error::DoesNotRequireValue(opt))),
+        }
     }
 
     /// Retrieve the value passed for this option.
@@ -225,21 +244,26 @@ where
     /// assert_eq!(opts.value(), Ok("see"));
     /// ```
     pub fn value(&self) -> Result<&'a str> {
-        let mut state = self.state.borrow_mut();
-        if !state.may_get_value || state.position >= self.args.len() {
-            if let Some(opt) = state.last_opt {
-                return Err(Error::RequiresValue(opt));
-            } else {
-                panic!("called value() before next()")
+        let mut inner = self.inner.borrow_mut();
+        match inner.state {
+            State::Start => panic!("called value() with no previous option"),
+            State::EndOfOption(opt) => {
+                if inner.position >= self.args.len() {
+                    Err(Error::RequiresValue(opt))
+                } else {
+                    let val = self.args[inner.position].as_ref();
+                    inner.position += 1;
+                    inner.state = State::Start;
+                    Ok(val)
+                }
+            }
+            State::ShortOptionCluster(_, index) | State::LongOptionWithValue(_, index) => {
+                let val = &self.args[inner.position].as_ref()[index..];
+                inner.position += 1;
+                inner.state = State::Start;
+                Ok(val)
             }
         }
-        let value = &self.args[state.position].as_ref()[state.index..];
-        state.index = 0;
-        state.position += 1;
-        state.may_get_value = false;
-        state.must_get_value = false;
-        state.last_opt = None;
-        Ok(value)
     }
 
     /// Retrieves the positional arguments, after the options have
@@ -267,11 +291,11 @@ where
     /// assert_eq!(opts.args(), &["foo", "bar"]);
     /// ```
     pub fn args(&self) -> &'a [S] {
-        let state = self.state.borrow();
-        if !state.done {
-            panic!("Option parsing is not complete");
+        let inner = self.inner.borrow();
+        match inner.state {
+            State::Start => &self.args[inner.position..],
+            _ => panic!("called args() while option parsing hasn't finished"),
         }
-        &self.args[state.position..]
     }
 }
 
