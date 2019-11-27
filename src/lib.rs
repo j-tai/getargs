@@ -654,16 +654,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn multiple_values() {
-        let args = ["-a", "ay", "ay2", "bar"];
-        let opts = Options::new(&args);
-        assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-        assert_eq!(opts.value_str(), Ok("ay"));
-        let _ = opts.value_str(); // cannot get 2 values
-    }
-
-    #[test]
     fn no_positional() {
         let args = ["-a", "ay"];
         let opts = Options::new(&args);
@@ -789,5 +779,82 @@ mod tests {
                 value: "3.14.1",
             }))
         );
+    }
+
+    #[test]
+    fn subcommand() {
+        let args = ["-a", "cmd", "-b", "arg"];
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.arg_str(), Some(&"cmd"));
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('b'))));
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.arg_str(), Some(&"arg"));
+    }
+
+    // Things you shouldn't need too often
+
+    #[test]
+    fn keep_retrieving_options() {
+        let args = ["-a", "ay", "ay2", "bar"];
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.next(), None);
+    }
+
+    #[test]
+    fn keep_retrieving_options_2() {
+        let args = ["-a", "--", "-b", "--see"];
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('b'))));
+        assert_eq!(opts.next(), Some(Ok(Opt::Long("see"))));
+        assert_eq!(opts.next(), None);
+    }
+
+    // Things you definitely shouldn't do
+
+    #[test]
+    #[should_panic]
+    fn keep_taking_values() {
+        let args = ["-a", "ay", "ay2", "bar"];
+        let opts = Options::new(&args);
+        let _ = opts.next(); // -a
+        let _ = opts.value_str(); // ay
+        let _ = opts.value_str(); // panic: cannot get 2 values
+    }
+
+    #[test]
+    fn keep_taking_args() {
+        let args = ["-a", "ay"];
+        let opts = Options::new(&args);
+        assert_eq!(opts.arg_str(), Some(&"-a"));
+        assert_eq!(opts.arg_str(), Some(&"ay"));
+        assert_eq!(opts.arg_str(), None);
+        assert_eq!(opts.arg_str(), None);
+        assert_eq!(opts.arg_str(), None);
+        assert_eq!(opts.arg_str(), None);
+    }
+
+    #[test]
+    #[should_panic]
+    fn value_without_option() {
+        let args = ["-a", "ay"];
+        let opts = Options::new(&args);
+        let _ = opts.value_str(); // no option retrieved yet
+    }
+
+    #[test]
+    #[should_panic]
+    fn value_after_arg() {
+        let args = ["ay", "bee"];
+        let opts = Options::new(&args);
+        let _ = opts.arg_str(); // ay
+        let _ = opts.value_str(); // no option retrieved yet
     }
 }
