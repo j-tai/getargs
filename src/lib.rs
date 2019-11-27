@@ -23,6 +23,7 @@ struct MyArgsStruct<'a> {
     attack_mode: bool,
     em_dashes: bool,
     execute: &'a str,
+    set_version: u32,
     positional_args: &'a [String],
 }
 
@@ -36,7 +37,9 @@ fn parse_args<'a>(opts: &'a Options<'a, String>) -> Result<MyArgsStruct<'a>> {
             Opt::Short('\u{2014}') => res.em_dashes = true,
             // -e EXPRESSION, or -eEXPRESSION, or
             // --execute EXPRESSION, or --execute=EXPRESSION
-            Opt::Short('e') | Opt::Long("execute") => res.execute = opts.value()?,
+            Opt::Short('e') | Opt::Long("execute") => res.execute = opts.value_str()?,
+            // Automatically parses the value as a u32
+            Opt::Short('V') => res.set_version = opts.value()?,
             // An unknown option was passed
             opt => return Err(Error::UnknownOpt(opt)),
         }
@@ -63,7 +66,9 @@ fn main() {
 use std::cell::RefCell;
 use std::error::Error as StdError;
 use std::fmt;
+use std::fmt::{Display, Formatter};
 use std::result::Result as StdResult;
+use std::str::FromStr;
 
 /// An argument parser.
 ///
@@ -84,6 +89,7 @@ struct OptionsInner<'a> {
     state: State<'a>,
 }
 
+#[derive(Copy, Clone)]
 enum State<'a> {
     /// The starting state. We may not get a value because there is no
     /// previous option. We may get a positional argument or an
@@ -102,6 +108,17 @@ enum State<'a> {
     /// We just consumed a long option with a value attached with `=`,
     /// e.g. `--execute=expression`. We must get the following value.
     LongOptionWithValue(Opt<'a>, usize),
+}
+
+impl<'a> State<'a> {
+    fn last_opt(&self) -> Opt<'a> {
+        match *self {
+            State::Start => panic!("called last_opt() on State::Start"),
+            State::EndOfOption(opt) => opt,
+            State::ShortOptionCluster(opt, _) => opt,
+            State::LongOptionWithValue(opt, _) => opt,
+        }
+    }
 }
 
 impl<'a, S> Options<'a, S>
@@ -215,7 +232,7 @@ where
         }
     }
 
-    /// Retrieve the value passed for this option.
+    /// Retrieves the value passed for this option as a string.
     ///
     /// This function returns an error if there is no value to return
     /// because the end of the argument list has been reached.
@@ -237,13 +254,13 @@ where
     /// let args = ["-aay", "--bee=foo", "-c", "see", "bar"];
     /// let opts = Options::new(&args);
     /// assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-    /// assert_eq!(opts.value(), Ok("ay"));
+    /// assert_eq!(opts.value_str(), Ok("ay"));
     /// assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
-    /// assert_eq!(opts.value(), Ok("foo"));
+    /// assert_eq!(opts.value_str(), Ok("foo"));
     /// assert_eq!(opts.next(), Some(Ok(Opt::Short('c'))));
-    /// assert_eq!(opts.value(), Ok("see"));
+    /// assert_eq!(opts.value_str(), Ok("see"));
     /// ```
-    pub fn value(&self) -> Result<&'a str> {
+    pub fn value_str(&self) -> Result<&'a str> {
         let mut inner = self.inner.borrow_mut();
         match inner.state {
             State::Start => panic!("called value() with no previous option"),
@@ -264,6 +281,56 @@ where
                 Ok(val)
             }
         }
+    }
+
+    /// Retrieves the value passed for this option and parses it.
+    ///
+    /// This method retrieves the value passed for the last option and
+    /// parses it as any type that implements `FromStr` (and any
+    /// potential error is `Display`). It returns an error if there is
+    /// no value to return because the end of the argument list has
+    /// been reached, or if the value failed to parse.
+    ///
+    /// This function is not pure, and it mutates the state of the
+    /// parser (despite taking a shared reference to self).
+    ///
+    /// # Panics
+    ///
+    /// This method panics if [`next`](#method.next) has not yet been
+    /// called, or it is called twice for the same option.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// use getargs::{Error, Opt, Options, Result};
+    /// let args = ["-a1", "--bee=2.5", "-c", "see", "bar"];
+    /// let opts = Options::new(&args);
+    /// assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+    /// let val: Result<i32> = opts.value();
+    /// assert_eq!(val, Ok(1));
+    /// assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
+    /// assert_eq!(opts.value::<f64>(), Ok(2.5));
+    /// assert_eq!(opts.next(), Some(Ok(Opt::Short('c'))));
+    /// assert_eq!(opts.value::<i64>(), Err(Error::InvalidValue {
+    ///     opt: Opt::Short('c'),
+    ///     desc: "invalid digit found in string".to_string(),
+    ///     value: "see",
+    /// }));
+    /// ```
+    pub fn value<T>(&self) -> Result<T>
+    where
+        T: FromStr,
+        T::Err: Display,
+    {
+        let opt = self.inner.borrow().state.last_opt();
+        let value = self.value_str()?;
+        T::from_str(value).map_err(|e| Error::InvalidValue {
+            opt,
+            desc: format!("{}", e),
+            value,
+        })
     }
 
     /// Retrieves the next positional argument as a string, after the
@@ -297,11 +364,11 @@ where
     /// let opts = Options::new(&args);
     /// assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
     /// assert_eq!(opts.next(), None);
-    /// assert_eq!(opts.arg(), Some(&"foo"));
-    /// assert_eq!(opts.arg(), Some(&"bar"));
-    /// assert_eq!(opts.arg(), None);
+    /// assert_eq!(opts.arg_str(), Some(&"foo"));
+    /// assert_eq!(opts.arg_str(), Some(&"bar"));
+    /// assert_eq!(opts.arg_str(), None);
     /// ```
-    pub fn arg(&self) -> Option<&'a S> {
+    pub fn arg_str(&self) -> Option<&'a S> {
         let mut inner = self.inner.borrow_mut();
         match inner.state {
             State::Start => {
@@ -314,6 +381,61 @@ where
                 }
             }
             _ => panic!("called arg() while option parsing hasn't finished"),
+        }
+    }
+
+    /// Retrieves and parses the next positional argument, after the
+    /// options have been parsed.
+    ///
+    /// This method returns the next positional argument after the
+    /// parsed options, parsed as any type that implements `FromStr`
+    /// (and any potential error is `Display`). This method must be
+    /// called after the options has finished parsing.
+    ///
+    /// After this method is called, this struct may be re-used to
+    /// parse further options with [`next`](#method.next), or you can
+    /// continue getting positional arguments (which will treat
+    /// options as regular positional arguments).
+    ///
+    /// This function is not pure, and it mutates the state of the
+    /// parser (despite taking a shared reference to self).
+    ///
+    /// # Panics
+    ///
+    /// This method panics if the option parsing is not yet complete;
+    /// that is, it panics if [`next`](#method.next) has not yet
+    /// returned `None` at least once.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// use getargs::{Error, Opt, Options, Result};
+    /// let args = ["-a", "1", "3.5", "foo"];
+    /// let opts = Options::new(&args);
+    /// assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+    /// assert_eq!(opts.next(), None);
+    /// let arg: Option<Result<i32>> = opts.arg();
+    /// assert_eq!(arg, Some(Ok(1)));
+    /// assert_eq!(opts.arg::<f64>(), Some(Ok(3.5)));
+    /// assert_eq!(opts.arg::<i32>(), Some(Err(Error::InvalidArg {
+    ///     desc: "invalid digit found in string".to_string(),
+    ///     value: "foo",
+    /// })));
+    /// ```
+    pub fn arg<T>(&self) -> Option<Result<T>>
+    where
+        T: FromStr,
+        T::Err: Display,
+    {
+        let arg = self.arg_str()?.as_ref();
+        match T::from_str(arg) {
+            Ok(v) => Some(Ok(v)),
+            Err(e) => Some(Err(Error::InvalidArg {
+                desc: format!("{}", e),
+                value: arg,
+            })),
         }
     }
 
@@ -359,8 +481,8 @@ pub enum Opt<'a> {
     Long(&'a str),
 }
 
-impl fmt::Display for Opt<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Display for Opt<'_> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Opt::Short(c) => write!(f, "-{}", c),
             Opt::Long(s) => write!(f, "--{}", s),
@@ -379,15 +501,29 @@ pub enum Error<'a> {
     RequiresValue(Opt<'a>),
     /// The option does not require a value, but one was supplied.
     DoesNotRequireValue(Opt<'a>),
+    /// A value for an option could not be parsed.
+    InvalidValue {
+        opt: Opt<'a>,
+        desc: String,
+        value: &'a str,
+    },
+    /// A positional argument could not be parsed.
+    InvalidArg { desc: String, value: &'a str },
 }
 
-impl fmt::Display for Error<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Display for Error<'_> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Error::UnknownOpt(opt) => write!(f, "unknown option: {}", opt),
             Error::RequiresValue(opt) => write!(f, "option requires a value: {}", opt),
             Error::DoesNotRequireValue(opt) => {
                 write!(f, "option does not require a value: {}", opt)
+            }
+            Error::InvalidValue { opt, desc, value } => {
+                write!(f, "invalid value for option '{}': {}: {}", opt, desc, value)
+            }
+            Error::InvalidArg { desc, value } => {
+                write!(f, "invalid value for argument: {}: {}", desc, value)
             }
         }
     }
@@ -406,7 +542,9 @@ mod tests {
         let args = ["foo", "bar"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), None);
-        assert_eq!(opts.args(), &["foo", "bar"]);
+        assert_eq!(opts.arg_str(), Some(&"foo"));
+        assert_eq!(opts.arg_str(), Some(&"bar"));
+        assert_eq!(opts.arg_str(), None);
     }
 
     #[test]
@@ -418,7 +556,8 @@ mod tests {
         assert_eq!(opts.next(), Some(Ok(Opt::Short('3'))));
         assert_eq!(opts.next(), Some(Ok(Opt::Short('@'))));
         assert_eq!(opts.next(), None);
-        assert_eq!(opts.args(), &["bar"]);
+        assert_eq!(opts.arg_str(), Some(&"bar"));
+        assert_eq!(opts.arg_str(), None);
     }
 
     #[test]
@@ -430,7 +569,8 @@ mod tests {
         assert_eq!(opts.next(), Some(Ok(Opt::Short('3'))));
         assert_eq!(opts.next(), Some(Ok(Opt::Short('@'))));
         assert_eq!(opts.next(), None);
-        assert_eq!(opts.args(), &["bar"]);
+        assert_eq!(opts.arg_str(), Some(&"bar"));
+        assert_eq!(opts.arg_str(), None);
     }
 
     #[test]
@@ -442,7 +582,8 @@ mod tests {
         assert_eq!(opts.next(), Some(Ok(Opt::Long("see"))));
         assert_eq!(opts.next(), Some(Ok(Opt::Long("@3"))));
         assert_eq!(opts.next(), None);
-        assert_eq!(opts.args(), &["bar"]);
+        assert_eq!(opts.arg_str(), Some(&"bar"));
+        assert_eq!(opts.arg_str(), None);
     }
 
     #[test]
@@ -450,11 +591,12 @@ mod tests {
         let args = ["-a", "ay", "-b", "bee", "bar"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-        assert_eq!(opts.value(), Ok("ay"));
+        assert_eq!(opts.value_str(), Ok("ay"));
         assert_eq!(opts.next(), Some(Ok(Opt::Short('b'))));
-        assert_eq!(opts.value(), Ok("bee"));
+        assert_eq!(opts.value_str(), Ok("bee"));
         assert_eq!(opts.next(), None);
-        assert_eq!(opts.args(), &["bar"]);
+        assert_eq!(opts.arg_str(), Some(&"bar"));
+        assert_eq!(opts.arg_str(), None);
     }
 
     #[test]
@@ -462,12 +604,13 @@ mod tests {
         let args = ["-aay", "-3bbee", "bar"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-        assert_eq!(opts.value(), Ok("ay"));
+        assert_eq!(opts.value_str(), Ok("ay"));
         assert_eq!(opts.next(), Some(Ok(Opt::Short('3'))));
         assert_eq!(opts.next(), Some(Ok(Opt::Short('b'))));
-        assert_eq!(opts.value(), Ok("bee"));
+        assert_eq!(opts.value_str(), Ok("bee"));
         assert_eq!(opts.next(), None);
-        assert_eq!(opts.args(), &["bar"]);
+        assert_eq!(opts.arg_str(), Some(&"bar"));
+        assert_eq!(opts.arg_str(), None);
     }
 
     #[test]
@@ -475,13 +618,14 @@ mod tests {
         let args = ["--ay", "Ay", "--bee=Bee", "--see", "See", "bar"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
-        assert_eq!(opts.value(), Ok("Ay"));
+        assert_eq!(opts.value_str(), Ok("Ay"));
         assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
-        assert_eq!(opts.value(), Ok("Bee"));
+        assert_eq!(opts.value_str(), Ok("Bee"));
         assert_eq!(opts.next(), Some(Ok(Opt::Long("see"))));
-        assert_eq!(opts.value(), Ok("See"));
+        assert_eq!(opts.value_str(), Ok("See"));
         assert_eq!(opts.next(), None);
-        assert_eq!(opts.args(), &["bar"]);
+        assert_eq!(opts.arg_str(), Some(&"bar"));
+        assert_eq!(opts.arg_str(), None);
     }
 
     #[test]
@@ -497,15 +641,16 @@ mod tests {
         ];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-        assert_eq!(opts.value(), Ok("-ay"));
+        assert_eq!(opts.value_str(), Ok("-ay"));
         assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
-        assert_eq!(opts.value(), Ok("--Bee"));
+        assert_eq!(opts.value_str(), Ok("--Bee"));
         assert_eq!(opts.next(), Some(Ok(Opt::Long("see"))));
-        assert_eq!(opts.value(), Ok("--See"));
+        assert_eq!(opts.value_str(), Ok("--See"));
         assert_eq!(opts.next(), Some(Ok(Opt::Short('d'))));
-        assert_eq!(opts.value(), Ok("-dee"));
+        assert_eq!(opts.value_str(), Ok("-dee"));
         assert_eq!(opts.next(), None);
-        assert_eq!(opts.args(), &["bar"]);
+        assert_eq!(opts.arg_str(), Some(&"bar"));
+        assert_eq!(opts.arg_str(), None);
     }
 
     #[test]
@@ -514,8 +659,8 @@ mod tests {
         let args = ["-a", "ay", "ay2", "bar"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-        assert_eq!(opts.value(), Ok("ay"));
-        let _ = opts.value(); // cannot get 2 values
+        assert_eq!(opts.value_str(), Ok("ay"));
+        let _ = opts.value_str(); // cannot get 2 values
     }
 
     #[test]
@@ -523,9 +668,9 @@ mod tests {
         let args = ["-a", "ay"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-        assert_eq!(opts.value(), Ok("ay"));
+        assert_eq!(opts.value_str(), Ok("ay"));
         assert_eq!(opts.next(), None);
-        assert_eq!(opts.args(), &[] as &[&str]);
+        assert_eq!(opts.arg_str(), None);
     }
 
     #[test]
@@ -533,11 +678,12 @@ mod tests {
         let args = ["--ay=", "--bee", "", "bar"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
-        assert_eq!(opts.value(), Ok(""));
+        assert_eq!(opts.value_str(), Ok(""));
         assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
-        assert_eq!(opts.value(), Ok(""));
+        assert_eq!(opts.value_str(), Ok(""));
         assert_eq!(opts.next(), None);
-        assert_eq!(opts.args(), &["bar"]);
+        assert_eq!(opts.arg_str(), Some(&"bar"));
+        assert_eq!(opts.arg_str(), None);
     }
 
     #[test]
@@ -545,7 +691,7 @@ mod tests {
         let args = ["-a"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-        assert_eq!(opts.value(), Err(Error::RequiresValue(Opt::Short('a'))));
+        assert_eq!(opts.value_str(), Err(Error::RequiresValue(Opt::Short('a'))));
     }
 
     #[test]
@@ -564,7 +710,7 @@ mod tests {
         let args = ["--ay"];
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
-        assert_eq!(opts.value(), Err(Error::RequiresValue(Opt::Long("ay"))));
+        assert_eq!(opts.value_str(), Err(Error::RequiresValue(Opt::Long("ay"))));
     }
 
     #[test]
@@ -574,7 +720,9 @@ mod tests {
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
         assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
         assert_eq!(opts.next(), None);
-        assert_eq!(opts.args(), &["--see", "-d"]);
+        assert_eq!(opts.arg_str(), Some(&"--see"));
+        assert_eq!(opts.arg_str(), Some(&"-d"));
+        assert_eq!(opts.arg_str(), None);
     }
 
     #[test]
@@ -584,6 +732,62 @@ mod tests {
         assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
         assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
         assert_eq!(opts.next(), None);
-        assert_eq!(opts.args(), &["-", "--see", "-d"]);
+        assert_eq!(opts.arg_str(), Some(&"-"));
+        assert_eq!(opts.arg_str(), Some(&"--see"));
+        assert_eq!(opts.arg_str(), Some(&"-d"));
+        assert_eq!(opts.arg_str(), None);
+    }
+
+    #[test]
+    fn parse_value() {
+        let args = ["-a", "3.14", "--bee=5"];
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+        assert_eq!(opts.value::<f64>(), Ok(3.14));
+        assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
+        assert_eq!(opts.value::<i32>(), Ok(5));
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.arg_str(), None);
+    }
+
+    #[test]
+    fn parse_arg() {
+        let args = ["-a", "3.14", "5"];
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.arg::<f64>(), Some(Ok(3.14)));
+        assert_eq!(opts.arg::<i32>(), Some(Ok(5)));
+        assert_eq!(opts.arg::<i32>(), None);
+    }
+
+    #[test]
+    fn parse_invalid_value() {
+        let args = ["-a", "3.14.1"];
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+        assert_eq!(
+            opts.value::<f64>(),
+            Err(Error::InvalidValue {
+                opt: Opt::Short('a'),
+                desc: "invalid float literal".to_string(),
+                value: "3.14.1",
+            })
+        );
+    }
+
+    #[test]
+    fn parse_invalid_arg() {
+        let args = ["-a", "3.14.1"];
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+        assert_eq!(opts.next(), None);
+        assert_eq!(
+            opts.arg::<f64>(),
+            Some(Err(Error::InvalidArg {
+                desc: "invalid float literal".to_string(),
+                value: "3.14.1",
+            }))
+        );
     }
 }
