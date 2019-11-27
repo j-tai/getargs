@@ -14,6 +14,7 @@ struct MyArgsStruct<'a> {
     attack_mode: bool,
     em_dashes: bool,
     execute: &'a str,
+    set_version: u32,
     positional_args: &'a [String],
 }
 
@@ -27,7 +28,9 @@ fn parse_args<'a>(opts: &'a Options<'a, String>) -> Result<MyArgsStruct<'a>> {
             Opt::Short('\u{2014}') => res.em_dashes = true,
             // -e EXPRESSION, or -eEXPRESSION, or
             // --execute EXPRESSION, or --execute=EXPRESSION
-            Opt::Short('e') | Opt::Long("execute") => res.execute = opts.value()?,
+            Opt::Short('e') | Opt::Long("execute") => res.execute = opts.value_str()?,
+            // Automatically parses the value as a u32
+            Opt::Short('V') => res.set_version = opts.value()?,
             // An unknown option was passed
             opt => return Err(Error::UnknownOpt(opt)),
         }
