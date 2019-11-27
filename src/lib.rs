@@ -169,6 +169,7 @@ where
         match inner.state {
             State::Start | State::EndOfOption(_) => {
                 if inner.position >= self.args.len() {
+                    inner.state = State::Start;
                     return None;
                 }
                 let arg = self.args[inner.position].as_ref();
@@ -701,6 +702,24 @@ mod tests {
         let opts = Options::new(&args);
         assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
         assert_eq!(opts.value_str(), Err(Error::RequiresValue(Opt::Long("ay"))));
+    }
+
+    #[test]
+    fn short_option_at_end() {
+        let args = ["-a"];
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.arg_str(), None);
+    }
+
+    #[test]
+    fn long_option_at_end() {
+        let args = ["--ay"];
+        let opts = Options::new(&args);
+        assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
+        assert_eq!(opts.next(), None);
+        assert_eq!(opts.arg_str(), None);
     }
 
     #[test]
