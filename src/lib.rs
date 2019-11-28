@@ -196,7 +196,7 @@ where
                         inner.state = State::EndOfOption(opt);
                         Some(Ok(opt))
                     }
-                } else if arg.starts_with("-") {
+                } else if arg.starts_with('-') {
                     // Short option
                     let ch = arg[1..].chars().next().unwrap();
                     let opt = Opt::Short(ch);
