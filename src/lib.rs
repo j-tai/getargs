@@ -29,8 +29,8 @@ struct MyArgsStruct<'a> {
 
 fn parse_args<'a>(opts: &'a Options<'a, String>) -> Result<MyArgsStruct<'a>> {
     let mut res = MyArgsStruct::default();
-    while let Some(opt) = opts.next() {
-        match opt? {
+    while let Some(opt) = opts.next()? {
+        match opt {
             // -a or --attack
             Opt::Short('a') | Opt::Long("attack") => res.attack_mode = true,
             // Unicode short options are supported
@@ -163,41 +163,41 @@ where
     /// use getargs::{Opt, Options};
     /// let args = ["-a", "--bee", "foo"];
     /// let opts = Options::new(&args);
-    /// assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-    /// assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
-    /// assert_eq!(opts.next(), None);
+    /// assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
+    /// assert_eq!(opts.next(), Ok(Some(Opt::Long("bee"))));
+    /// assert_eq!(opts.next(), Ok(None));
     /// ```
-    pub fn next(&self) -> Option<Result<Opt<'a>>> {
+    pub fn next(&self) -> Result<Option<Opt<'a>>> {
         let mut inner = self.inner.borrow_mut();
         match inner.state {
             State::Start | State::EndOfOption(_) => {
                 if inner.position >= self.args.len() {
                     inner.state = State::Start;
-                    return None;
+                    return Ok(None);
                 }
                 let arg = self.args[inner.position].as_ref();
                 if arg == "--" {
                     // End of options
                     inner.position += 1;
                     inner.state = State::Start;
-                    None
+                    Ok(None)
                 } else if arg == "-" {
                     // "-" is a positional argument
                     inner.state = State::Start;
-                    None
+                    Ok(None)
                 } else if arg.starts_with("--") {
                     // Long option
                     if let Some(equals) = arg.find('=') {
                         // Long option with value
                         let opt = Opt::Long(&arg[2..equals]);
                         inner.state = State::LongOptionWithValue(opt, equals + 1);
-                        Some(Ok(opt))
+                        Ok(Some(opt))
                     } else {
                         // Long option without value
                         let opt = Opt::Long(&arg[2..]);
                         inner.position += 1;
                         inner.state = State::EndOfOption(opt);
-                        Some(Ok(opt))
+                        Ok(Some(opt))
                     }
                 } else if arg.starts_with('-') {
                     // Short option
@@ -210,11 +210,11 @@ where
                     } else {
                         inner.state = State::ShortOptionCluster(opt, index);
                     }
-                    Some(Ok(opt))
+                    Ok(Some(opt))
                 } else {
                     // Positional argument
                     inner.state = State::Start;
-                    None
+                    Ok(None)
                 }
             }
 
@@ -229,10 +229,10 @@ where
                 } else {
                     inner.state = State::ShortOptionCluster(opt, index);
                 }
-                Some(Ok(opt))
+                Ok(Some(opt))
             }
 
-            State::LongOptionWithValue(opt, _) => Some(Err(Error::DoesNotRequireValue(opt))),
+            State::LongOptionWithValue(opt, _) => Err(Error::DoesNotRequireValue(opt)),
         }
     }
 
@@ -257,11 +257,11 @@ where
     /// use getargs::{Opt, Options};
     /// let args = ["-aay", "--bee=foo", "-c", "see", "bar"];
     /// let opts = Options::new(&args);
-    /// assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+    /// assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
     /// assert_eq!(opts.value_str(), Ok("ay"));
-    /// assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
+    /// assert_eq!(opts.next(), Ok(Some(Opt::Long("bee"))));
     /// assert_eq!(opts.value_str(), Ok("foo"));
-    /// assert_eq!(opts.next(), Some(Ok(Opt::Short('c'))));
+    /// assert_eq!(opts.next(), Ok(Some(Opt::Short('c'))));
     /// assert_eq!(opts.value_str(), Ok("see"));
     /// ```
     pub fn value_str(&self) -> Result<&'a str> {
@@ -311,12 +311,12 @@ where
     /// use getargs::{Error, Opt, Options, Result};
     /// let args = ["-a1", "--bee=2.5", "-c", "see", "bar"];
     /// let opts = Options::new(&args);
-    /// assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+    /// assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
     /// let val: Result<i32> = opts.value();
     /// assert_eq!(val, Ok(1));
-    /// assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
+    /// assert_eq!(opts.next(), Ok(Some(Opt::Long("bee"))));
     /// assert_eq!(opts.value::<f64>(), Ok(2.5));
-    /// assert_eq!(opts.next(), Some(Ok(Opt::Short('c'))));
+    /// assert_eq!(opts.next(), Ok(Some(Opt::Short('c'))));
     /// assert_eq!(opts.value::<i64>(), Err(Error::InvalidValue {
     ///     opt: Opt::Short('c'),
     ///     desc: "invalid digit found in string".to_string(),
@@ -366,8 +366,8 @@ where
     /// use getargs::{Opt, Options};
     /// let args = ["-a", "foo", "bar"];
     /// let opts = Options::new(&args);
-    /// assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-    /// assert_eq!(opts.next(), None);
+    /// assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
+    /// assert_eq!(opts.next(), Ok(None));
     /// assert_eq!(opts.arg_str(), Some(&"foo"));
     /// assert_eq!(opts.arg_str(), Some(&"bar"));
     /// assert_eq!(opts.arg_str(), None);
@@ -418,28 +418,31 @@ where
     /// use getargs::{Error, Opt, Options, Result};
     /// let args = ["-a", "1", "3.5", "foo"];
     /// let opts = Options::new(&args);
-    /// assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-    /// assert_eq!(opts.next(), None);
-    /// let arg: Option<Result<i32>> = opts.arg();
-    /// assert_eq!(arg, Some(Ok(1)));
-    /// assert_eq!(opts.arg::<f64>(), Some(Ok(3.5)));
-    /// assert_eq!(opts.arg::<i32>(), Some(Err(Error::InvalidArg {
+    /// assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
+    /// assert_eq!(opts.next(), Ok(None));
+    /// let arg: Result<Option<i32>> = opts.arg();
+    /// assert_eq!(arg, Ok(Some(1)));
+    /// assert_eq!(opts.arg::<f64>(), Ok(Some(3.5)));
+    /// assert_eq!(opts.arg::<i32>(), Err(Error::InvalidArg {
     ///     desc: "invalid digit found in string".to_string(),
     ///     value: "foo",
-    /// })));
+    /// }));
     /// ```
-    pub fn arg<T>(&self) -> Option<Result<T>>
+    pub fn arg<T>(&self) -> Result<Option<T>>
     where
         T: FromStr,
         T::Err: Display,
     {
-        let arg = self.arg_str()?.as_ref();
+        let arg = match self.arg_str() {
+            Some(s) => s.as_ref(),
+            None => return Ok(None),
+        };
         match T::from_str(arg) {
-            Ok(v) => Some(Ok(v)),
-            Err(e) => Some(Err(Error::InvalidArg {
+            Ok(v) => Ok(Some(v)),
+            Err(e) => Err(Error::InvalidArg {
                 desc: format!("{}", e),
                 value: arg,
-            })),
+            }),
         }
     }
 
@@ -463,8 +466,8 @@ where
     /// use getargs::{Opt, Options};
     /// let args = ["-a", "foo", "bar"];
     /// let opts = Options::new(&args);
-    /// assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-    /// assert_eq!(opts.next(), None);
+    /// assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
+    /// assert_eq!(opts.next(), Ok(None));
     /// assert_eq!(opts.args(), &["foo", "bar"]);
     /// ```
     pub fn args(&self) -> &'a [S] {
