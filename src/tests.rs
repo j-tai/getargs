@@ -4,7 +4,7 @@ use super::*;
 fn no_options() {
     let args = ["foo", "bar"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), None);
+    assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg_str(), Some(&"foo"));
     assert_eq!(opts.arg_str(), Some(&"bar"));
     assert_eq!(opts.arg_str(), None);
@@ -14,11 +14,11 @@ fn no_options() {
 fn short_options() {
     let args = ["-a", "-b", "-3", "-@", "bar"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('b'))));
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('3'))));
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('@'))));
-    assert_eq!(opts.next(), None);
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('b'))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('3'))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('@'))));
+    assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg_str(), Some(&"bar"));
     assert_eq!(opts.arg_str(), None);
 }
@@ -27,11 +27,11 @@ fn short_options() {
 fn short_cluster() {
     let args = ["-ab3@", "bar"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('b'))));
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('3'))));
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('@'))));
-    assert_eq!(opts.next(), None);
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('b'))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('3'))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('@'))));
+    assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg_str(), Some(&"bar"));
     assert_eq!(opts.arg_str(), None);
 }
@@ -40,11 +40,11 @@ fn short_cluster() {
 fn long_options() {
     let args = ["--ay", "--bee", "--see", "--@3", "bar"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
-    assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
-    assert_eq!(opts.next(), Some(Ok(Opt::Long("see"))));
-    assert_eq!(opts.next(), Some(Ok(Opt::Long("@3"))));
-    assert_eq!(opts.next(), None);
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("ay"))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("bee"))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("see"))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("@3"))));
+    assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg_str(), Some(&"bar"));
     assert_eq!(opts.arg_str(), None);
 }
@@ -53,11 +53,11 @@ fn long_options() {
 fn short_option_with_value() {
     let args = ["-a", "ay", "-b", "bee", "bar"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
     assert_eq!(opts.value_str(), Ok("ay"));
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('b'))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('b'))));
     assert_eq!(opts.value_str(), Ok("bee"));
-    assert_eq!(opts.next(), None);
+    assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg_str(), Some(&"bar"));
     assert_eq!(opts.arg_str(), None);
 }
@@ -66,12 +66,12 @@ fn short_option_with_value() {
 fn short_cluster_with_value() {
     let args = ["-aay", "-3bbee", "bar"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
     assert_eq!(opts.value_str(), Ok("ay"));
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('3'))));
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('b'))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('3'))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('b'))));
     assert_eq!(opts.value_str(), Ok("bee"));
-    assert_eq!(opts.next(), None);
+    assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg_str(), Some(&"bar"));
     assert_eq!(opts.arg_str(), None);
 }
@@ -80,13 +80,13 @@ fn short_cluster_with_value() {
 fn long_option_with_value() {
     let args = ["--ay", "Ay", "--bee=Bee", "--see", "See", "bar"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("ay"))));
     assert_eq!(opts.value_str(), Ok("Ay"));
-    assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("bee"))));
     assert_eq!(opts.value_str(), Ok("Bee"));
-    assert_eq!(opts.next(), Some(Ok(Opt::Long("see"))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("see"))));
     assert_eq!(opts.value_str(), Ok("See"));
-    assert_eq!(opts.next(), None);
+    assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg_str(), Some(&"bar"));
     assert_eq!(opts.arg_str(), None);
 }
@@ -103,15 +103,15 @@ fn value_with_dash() {
         "bar",
     ];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
     assert_eq!(opts.value_str(), Ok("-ay"));
-    assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("bee"))));
     assert_eq!(opts.value_str(), Ok("--Bee"));
-    assert_eq!(opts.next(), Some(Ok(Opt::Long("see"))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("see"))));
     assert_eq!(opts.value_str(), Ok("--See"));
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('d'))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('d'))));
     assert_eq!(opts.value_str(), Ok("-dee"));
-    assert_eq!(opts.next(), None);
+    assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg_str(), Some(&"bar"));
     assert_eq!(opts.arg_str(), None);
 }
@@ -120,9 +120,9 @@ fn value_with_dash() {
 fn no_positional() {
     let args = ["-a", "ay"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
     assert_eq!(opts.value_str(), Ok("ay"));
-    assert_eq!(opts.next(), None);
+    assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg_str(), None);
 }
 
@@ -130,11 +130,11 @@ fn no_positional() {
 fn long_option_with_empty_value() {
     let args = ["--ay=", "--bee", "", "bar"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("ay"))));
     assert_eq!(opts.value_str(), Ok(""));
-    assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("bee"))));
     assert_eq!(opts.value_str(), Ok(""));
-    assert_eq!(opts.next(), None);
+    assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg_str(), Some(&"bar"));
     assert_eq!(opts.arg_str(), None);
 }
@@ -143,7 +143,7 @@ fn long_option_with_empty_value() {
 fn short_option_with_missing_value() {
     let args = ["-a"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
     assert_eq!(opts.value_str(), Err(Error::RequiresValue(Opt::Short('a'))));
 }
 
@@ -151,10 +151,10 @@ fn short_option_with_missing_value() {
 fn long_option_with_unexpected_value() {
     let args = ["--ay=Ay", "bar"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("ay"))));
     assert_eq!(
         opts.next(),
-        Some(Err(Error::DoesNotRequireValue(Opt::Long("ay")))),
+        Err(Error::DoesNotRequireValue(Opt::Long("ay"))),
     );
 }
 
@@ -162,7 +162,7 @@ fn long_option_with_unexpected_value() {
 fn long_option_with_missing_value() {
     let args = ["--ay"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("ay"))));
     assert_eq!(opts.value_str(), Err(Error::RequiresValue(Opt::Long("ay"))));
 }
 
@@ -170,8 +170,8 @@ fn long_option_with_missing_value() {
 fn short_option_at_end() {
     let args = ["-a"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-    assert_eq!(opts.next(), None);
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
+    assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg_str(), None);
 }
 
@@ -179,8 +179,8 @@ fn short_option_at_end() {
 fn long_option_at_end() {
     let args = ["--ay"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Long("ay"))));
-    assert_eq!(opts.next(), None);
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("ay"))));
+    assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg_str(), None);
 }
 
@@ -188,9 +188,9 @@ fn long_option_at_end() {
 fn end_of_options() {
     let args = ["-a", "--bee", "--", "--see", "-d"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-    assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
-    assert_eq!(opts.next(), None);
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("bee"))));
+    assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg_str(), Some(&"--see"));
     assert_eq!(opts.arg_str(), Some(&"-d"));
     assert_eq!(opts.arg_str(), None);
@@ -200,9 +200,9 @@ fn end_of_options() {
 fn lone_dash() {
     let args = ["-a", "--bee", "-", "--see", "-d"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-    assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
-    assert_eq!(opts.next(), None);
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("bee"))));
+    assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg_str(), Some(&"-"));
     assert_eq!(opts.arg_str(), Some(&"--see"));
     assert_eq!(opts.arg_str(), Some(&"-d"));
@@ -213,11 +213,11 @@ fn lone_dash() {
 fn parse_value() {
     let args = ["-a", "3.14", "--bee=5"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
     assert_eq!(opts.value::<f64>(), Ok(3.14));
-    assert_eq!(opts.next(), Some(Ok(Opt::Long("bee"))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("bee"))));
     assert_eq!(opts.value::<i32>(), Ok(5));
-    assert_eq!(opts.next(), None);
+    assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg_str(), None);
 }
 
@@ -225,18 +225,18 @@ fn parse_value() {
 fn parse_arg() {
     let args = ["-a", "3.14", "5"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-    assert_eq!(opts.next(), None);
-    assert_eq!(opts.arg::<f64>(), Some(Ok(3.14)));
-    assert_eq!(opts.arg::<i32>(), Some(Ok(5)));
-    assert_eq!(opts.arg::<i32>(), None);
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
+    assert_eq!(opts.next(), Ok(None));
+    assert_eq!(opts.arg::<f64>(), Ok(Some(3.14)));
+    assert_eq!(opts.arg::<i32>(), Ok(Some(5)));
+    assert_eq!(opts.arg::<i32>(), Ok(None));
 }
 
 #[test]
 fn parse_invalid_value() {
     let args = ["-a", "3.14.1"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
     assert_eq!(
         opts.value::<f64>(),
         Err(Error::InvalidValue {
@@ -251,14 +251,14 @@ fn parse_invalid_value() {
 fn parse_invalid_arg() {
     let args = ["-a", "3.14.1"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-    assert_eq!(opts.next(), None);
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
+    assert_eq!(opts.next(), Ok(None));
     assert_eq!(
         opts.arg::<f64>(),
-        Some(Err(Error::InvalidArg {
+        Err(Error::InvalidArg {
             desc: "invalid float literal".to_string(),
             value: "3.14.1",
-        }))
+        })
     );
 }
 
@@ -266,11 +266,11 @@ fn parse_invalid_arg() {
 fn subcommand() {
     let args = ["-a", "cmd", "-b", "arg"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-    assert_eq!(opts.next(), None);
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
+    assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg_str(), Some(&"cmd"));
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('b'))));
-    assert_eq!(opts.next(), None);
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('b'))));
+    assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg_str(), Some(&"arg"));
 }
 
@@ -280,22 +280,22 @@ fn subcommand() {
 fn keep_retrieving_options() {
     let args = ["-a", "ay", "ay2", "bar"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-    assert_eq!(opts.next(), None);
-    assert_eq!(opts.next(), None);
-    assert_eq!(opts.next(), None);
-    assert_eq!(opts.next(), None);
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
+    assert_eq!(opts.next(), Ok(None));
+    assert_eq!(opts.next(), Ok(None));
+    assert_eq!(opts.next(), Ok(None));
+    assert_eq!(opts.next(), Ok(None));
 }
 
 #[test]
 fn keep_retrieving_options_2() {
     let args = ["-a", "--", "-b", "--see"];
     let opts = Options::new(&args);
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('a'))));
-    assert_eq!(opts.next(), None);
-    assert_eq!(opts.next(), Some(Ok(Opt::Short('b'))));
-    assert_eq!(opts.next(), Some(Ok(Opt::Long("see"))));
-    assert_eq!(opts.next(), None);
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
+    assert_eq!(opts.next(), Ok(None));
+    assert_eq!(opts.next(), Ok(Some(Opt::Short('b'))));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("see"))));
+    assert_eq!(opts.next(), Ok(None));
 }
 
 // Things you definitely shouldn't do
