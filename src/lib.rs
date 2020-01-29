@@ -497,6 +497,18 @@ impl Display for Opt<'_> {
     }
 }
 
+impl From<char> for Opt<'static> {
+    fn from(ch: char) -> Opt<'static> {
+        Opt::Short(ch)
+    }
+}
+
+impl<'a> From<&'a str> for Opt<'a> {
+    fn from(s: &'a str) -> Opt<'a> {
+        Opt::Long(s)
+    }
+}
+
 // Error handling
 
 /// A parse error.
