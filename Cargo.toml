@@ -1,10 +1,10 @@
 [package]
 name = "getargs"
-version = "0.4.1"
-authors = ["Jasmine Tai <jtai@jtai.ca>"]
-edition = "2018"
+version = "0.5.0"
+authors = ["Jasmine Tai <jtai@jtai.ca>", "LoganDark"]
+edition = "2021"
 license = "MIT"
-description = "A truly zero-cust argument parser"
+description = "A truly zero-cost argument parser"
 homepage = "https://github.com/j-tai/getargs"
 documentation = "https://docs.rs/getargs/*/getargs/"
 repository = "https://github.com/j-tai/getargs"
@@ -12,4 +12,12 @@ keywords = ["arg", "argument", "parse", "parser", "cli"]
 categories = ["command-line-interface"]
 readme = "README.md"
 
+[features]
+std = []
+default = ["std"]
+
 [dependencies]
+
+[dev-dependencies]
+argv = "~0.1.5"
+thiserror = "^1.0.31"
