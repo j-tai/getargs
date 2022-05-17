@@ -1,144 +1,149 @@
-/*!
-A truly zero-cost argument parser.
+//! A truly zero-cost argument parser.
+//!
+//! # About
+//!
+//! `getargs` is a low-level, efficient, and versatile argument parser
+//! that works similarly to "getopts". It works by producing a stream
+//! of options, and after each option, your code decides whether to
+//! require and retrieve the value for the option or not.
+//!
+//! You do not have to declare a list of valid options. Therefore, you
+//! write your own help message.
+//!
+//! # Basic example
+//!
+//! ```no_run
+//! use std::process;
+//! use getargs::{Opt, Options};
+//! use std::str::FromStr;
+//! use std::num::ParseIntError;
+//!
+//! #[derive(Clone, Eq, PartialEq, Debug, thiserror::Error)]
+//! enum Error<'str> {
+//!     #[error("{0:?}")]
+//!     Getargs(getargs::Error<'str>),
+//!     #[error("parsing version: {0}")]
+//!     VersionParseError(ParseIntError),
+//!     #[error("unknown option: {0}")]
+//!     UnknownOption(Opt<'str>)
+//! }
+//!
+//! impl<'str> From<getargs::Error<'str>> for Error<'str> {
+//!     fn from(error: getargs::Error<'str>) -> Self {
+//!         Self::Getargs(error)
+//!     }
+//! }
+//!
+//! // You are recommended to create a struct to hold your arguments
+//! #[derive(Default, Debug)]
+//! struct MyArgsStruct<'a> {
+//!     attack_mode: bool,
+//!     em_dashes: bool,
+//!     execute: &'a str,
+//!     set_version: u32,
+//!     positional_args: Vec<&'a str>,
+//! }
+//!
+//! fn parse_args<'a, 'str, I: Iterator<Item = &'str str>>(opts: &'a mut Options<'str, I>) -> Result<MyArgsStruct<'str>, Error<'str>> {
+//!     let mut res = MyArgsStruct::default();
+//!     while let Some(opt) = opts.next()? {
+//!         match opt {
+//!             // -a or --attack
+//!             Opt::Short('a') | Opt::Long("attack") => res.attack_mode = true,
+//!             // Unicode short options are supported
+//!             Opt::Short('\u{2014}') => res.em_dashes = true,
+//!             // -e EXPRESSION, or -eEXPRESSION, or
+//!             // --execute EXPRESSION, or --execute=EXPRESSION
+//!             Opt::Short('e') | Opt::Long("execute") => res.execute = opts.value()?,
+//!             // Automatically parses the value as a u32
+//!             Opt::Short('V') => res.set_version = u32::from_str(opts.value()?).map_err(Error::VersionParseError)?,
+//!             // An unknown option was passed
+//!             opt => return Err(Error::UnknownOption(opt)),
+//!         }
+//!     }
+//!     res.positional_args = opts.args().collect();
+//!     Ok(res)
+//! }
+//!
+//! fn main() {
+//!     let args: Vec<_> = std::env::args().skip(1).collect();
+//!     let mut opts = Options::new(args.iter().map(String::as_str));
+//!     let options = match parse_args(&mut opts) {
+//!         Ok(o) => o,
+//!         Err(e) => {
+//!             eprintln!("error: {}", e);
+//!             process::exit(1);
+//!         }
+//!     };
+//!     println!("{:#?}", options);
+//! }
+//! ```
 
-# About
+#![cfg_attr(not(feature = "std"), no_std)]
 
-`getargs` is a low-level, efficient, and versatile argument parser
-that works similarly to "getopts". It works by producing a stream
-of options, and after each option, your code decides whether to
-require and retrieve the value for the option or not.
-
-You do not have to declare a list of valid options. Therefore, you
-write your own help message.
-
-# Basic example
-
-```no_run
-use std::process;
-use getargs::{Error, Opt, Options, Result};
-
-// You are recommended to create a struct to hold your arguments
-#[derive(Default, Debug)]
-struct MyArgsStruct<'a> {
-    attack_mode: bool,
-    em_dashes: bool,
-    execute: &'a str,
-    set_version: u32,
-    positional_args: &'a [String],
-}
-
-fn parse_args<'a>(opts: &'a Options<'a, String>) -> Result<MyArgsStruct<'a>> {
-    let mut res = MyArgsStruct::default();
-    while let Some(opt) = opts.next()? {
-        match opt {
-            // -a or --attack
-            Opt::Short('a') | Opt::Long("attack") => res.attack_mode = true,
-            // Unicode short options are supported
-            Opt::Short('\u{2014}') => res.em_dashes = true,
-            // -e EXPRESSION, or -eEXPRESSION, or
-            // --execute EXPRESSION, or --execute=EXPRESSION
-            Opt::Short('e') | Opt::Long("execute") => res.execute = opts.value_str()?,
-            // Automatically parses the value as a u32
-            Opt::Short('V') => res.set_version = opts.value()?,
-            // An unknown option was passed
-            opt => return Err(Error::UnknownOpt(opt)),
-        }
-    }
-    res.positional_args = opts.args();
-    Ok(res)
-}
-
-fn main() {
-    let args: Vec<_> = std::env::args().skip(1).collect();
-    let opts = Options::new(&args);
-    let options = match parse_args(&opts) {
-        Ok(o) => o,
-        Err(e) => {
-            eprintln!("usage error: {}", e);
-            process::exit(1);
-        }
-    };
-    println!("{:#?}", options);
-}
-```
-*/
-
-use std::cell::RefCell;
-use std::error::Error as StdError;
-use std::fmt;
-use std::fmt::{Display, Formatter};
-use std::result::Result as StdResult;
-use std::str::FromStr;
-
+mod error;
+mod iter;
+mod opt;
 #[cfg(test)]
 mod tests;
+
+pub use error::{Error, Result};
+pub use iter::{ArgIterator, IntoArgs};
+pub use opt::Opt;
 
 /// An argument parser.
 ///
 /// See the [crate documentation](index.html) for more details.
-pub struct Options<'a, S>
+pub struct Options<'str, I>
 where
-    S: AsRef<str>,
+    I: Iterator<Item = &'str str>,
 {
-    args: &'a [S],
+    /// Iterator over the arguments.
+    iter: I,
     /// State information.
-    inner: RefCell<OptionsInner<'a>>,
+    state: State<'str>,
 }
 
-struct OptionsInner<'a> {
-    /// Index in `args`.
-    position: usize,
-    /// The state information.
-    state: State<'a>,
-}
-
-#[derive(Copy, Clone)]
-enum State<'a> {
+#[derive(Copy, Clone, Debug)]
+enum State<'str> {
     /// The starting state. We may not get a value because there is no
     /// previous option. We may get a positional argument or an
     /// option.
     Start,
+    /// We found a positional option and want to preserve it, since it
+    /// will no longer be returned from the iterator.
+    Positional(&'str str),
     /// We have just finished parsing an option, be it short or long,
     /// and we don't know whether the next argument is considered a
     /// value for the option or a positional argument. From here, we
     /// can get the next option, the next value, or the next
     /// positional argument.
-    EndOfOption(Opt<'a>),
+    EndOfOption(Opt<'str>),
     /// We are in the middle of a cluster of short options. From here,
     /// we can get the next short option, or we can get the value for
     /// the last short option. We may not get a positional argument.
-    ShortOptionCluster(Opt<'a>, usize),
+    ShortOptionCluster(Opt<'str>, &'str str),
     /// We just consumed a long option with a value attached with `=`,
     /// e.g. `--execute=expression`. We must get the following value.
-    LongOptionWithValue(Opt<'a>, usize),
+    LongOptionWithValue(Opt<'str>, &'str str),
+    /// We have recieved `None` from the iterator and we are refusing to
+    /// advance to be polite.
+    End,
 }
 
-impl<'a> State<'a> {
-    fn last_opt(&self) -> Opt<'a> {
-        match *self {
-            State::Start => panic!("called last_opt() on State::Start"),
-            State::EndOfOption(opt) => opt,
-            State::ShortOptionCluster(opt, _) => opt,
-            State::LongOptionWithValue(opt, _) => opt,
-        }
-    }
-}
-
-impl<'a, S> Options<'a, S>
+impl<'str, I> Options<'str, I>
 where
-    S: AsRef<str>,
+    I: Iterator<Item = &'str str>,
 {
-    /// Creates a new argument parser given the slice of arguments.
+    /// Creates a new argument parser given an arguments iterator.
     ///
-    /// The argument parser only lives as long as the slice of
-    /// arguments.
-    pub fn new(args: &[S]) -> Options<S> {
+    /// The argument parser only lives as long as the iterator,
+    /// but returns strings with the same lifetime as whatever the
+    /// iterator yields.
+    pub fn new(iter: I) -> Options<'str, I> {
         Options {
-            args,
-            inner: RefCell::new(OptionsInner {
-                position: 0,
-                state: State::Start,
-            }),
+            iter,
+            state: State::Start,
         }
     }
 
@@ -152,8 +157,8 @@ where
     ///
     /// This method does not retrieve any value that goes with the
     /// option. If the option requires an value, such as in
-    /// `--option=value`, then you should call
-    /// [`value`](#method.value) after getting the option.
+    /// `--option=value`, then you should call [`value`] after
+    /// getting the option.
     ///
     /// # Examples
     ///
@@ -162,77 +167,75 @@ where
     /// ```
     /// use getargs::{Opt, Options};
     /// let args = ["-a", "--bee", "foo"];
-    /// let opts = Options::new(&args);
+    /// let mut opts = Options::new(args.into_iter());
     /// assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
     /// assert_eq!(opts.next(), Ok(Some(Opt::Long("bee"))));
     /// assert_eq!(opts.next(), Ok(None));
     /// ```
-    pub fn next(&self) -> Result<Option<Opt<'a>>> {
-        let mut inner = self.inner.borrow_mut();
-        match inner.state {
+    #[allow(clippy::should_implement_trait)] // `for` loops are not useful here
+    pub fn next(&'_ mut self) -> Result<'str, Option<Opt<'str>>> {
+        match self.state {
             State::Start | State::EndOfOption(_) => {
-                if inner.position >= self.args.len() {
-                    inner.state = State::Start;
+                let next = self.iter.next();
+                if next.is_none() {
+                    self.state = State::End;
                     return Ok(None);
                 }
-                let arg = self.args[inner.position].as_ref();
+                let arg = next.unwrap();
                 if arg == "--" {
                     // End of options
-                    inner.position += 1;
-                    inner.state = State::Start;
+                    self.state = State::Start;
                     Ok(None)
                 } else if arg == "-" {
                     // "-" is a positional argument
-                    inner.state = State::Start;
+                    self.state = State::Positional(arg);
                     Ok(None)
-                } else if arg.starts_with("--") {
+                } else if let Some(flag) = arg.strip_prefix("--") {
                     // Long option
-                    if let Some(equals) = arg.find('=') {
+                    if let Some((flag, value)) = flag.split_once('=') {
                         // Long option with value
-                        let opt = Opt::Long(&arg[2..equals]);
-                        inner.state = State::LongOptionWithValue(opt, equals + 1);
+                        let opt = Opt::Long(flag);
+                        self.state = State::LongOptionWithValue(opt, value);
                         Ok(Some(opt))
                     } else {
                         // Long option without value
-                        let opt = Opt::Long(&arg[2..]);
-                        inner.position += 1;
-                        inner.state = State::EndOfOption(opt);
+                        let opt = Opt::Long(flag);
+                        self.state = State::EndOfOption(opt);
                         Ok(Some(opt))
                     }
-                } else if arg.starts_with('-') {
+                } else if let Some(chars) = arg.strip_prefix('-') {
                     // Short option
-                    let ch = arg[1..].chars().next().unwrap();
+                    let ch = chars.chars().next().unwrap();
                     let opt = Opt::Short(ch);
-                    let index = 1 + ch.len_utf8();
-                    if index >= arg.len() {
-                        inner.position += 1;
-                        inner.state = State::EndOfOption(opt);
+                    let rest = &chars[ch.len_utf8()..];
+                    if rest.is_empty() {
+                        self.state = State::EndOfOption(opt);
                     } else {
-                        inner.state = State::ShortOptionCluster(opt, index);
+                        self.state = State::ShortOptionCluster(opt, rest)
                     }
                     Ok(Some(opt))
                 } else {
                     // Positional argument
-                    inner.state = State::Start;
+                    self.state = State::Positional(arg);
                     Ok(None)
                 }
             }
 
-            State::ShortOptionCluster(_, index) => {
-                let arg = self.args[inner.position].as_ref();
-                let ch = arg[index..].chars().next().unwrap();
+            State::ShortOptionCluster(_, rest) => {
+                let ch = rest.chars().next().unwrap();
                 let opt = Opt::Short(ch);
-                let index = index + ch.len_utf8();
-                if index >= arg.len() {
-                    inner.position += 1;
-                    inner.state = State::EndOfOption(opt);
+                let rest = &rest[ch.len_utf8()..];
+                if rest.is_empty() {
+                    self.state = State::EndOfOption(opt);
                 } else {
-                    inner.state = State::ShortOptionCluster(opt, index);
+                    self.state = State::ShortOptionCluster(opt, rest);
                 }
                 Ok(Some(opt))
             }
 
             State::LongOptionWithValue(opt, _) => Err(Error::DoesNotRequireValue(opt)),
+
+            State::Positional(_) | State::End => Ok(None),
         }
     }
 
@@ -256,85 +259,82 @@ where
     /// ```
     /// use getargs::{Opt, Options};
     /// let args = ["-aay", "--bee=foo", "-c", "see", "bar"];
-    /// let opts = Options::new(&args);
+    /// let mut opts = Options::new(args.into_iter());
     /// assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
-    /// assert_eq!(opts.value_str(), Ok("ay"));
+    /// assert_eq!(opts.value(), Ok("ay"));
     /// assert_eq!(opts.next(), Ok(Some(Opt::Long("bee"))));
-    /// assert_eq!(opts.value_str(), Ok("foo"));
+    /// assert_eq!(opts.value(), Ok("foo"));
     /// assert_eq!(opts.next(), Ok(Some(Opt::Short('c'))));
-    /// assert_eq!(opts.value_str(), Ok("see"));
+    /// assert_eq!(opts.value(), Ok("see"));
     /// ```
-    pub fn value_str(&self) -> Result<&'a str> {
-        let mut inner = self.inner.borrow_mut();
-        match inner.state {
-            State::Start => panic!("called value() with no previous option"),
+    pub fn value(&'_ mut self) -> Result<'str, &'str str> {
+        match self.state {
+            State::Start | State::Positional(_) | State::End => {
+                panic!("called Options::value() with no previous option")
+            }
+
             State::EndOfOption(opt) => {
-                if inner.position >= self.args.len() {
-                    Err(Error::RequiresValue(opt))
-                } else {
-                    let val = self.args[inner.position].as_ref();
-                    inner.position += 1;
-                    inner.state = State::Start;
+                if let Some(val) = self.iter.next() {
+                    self.state = State::Start;
                     Ok(val)
+                } else {
+                    self.state = State::End;
+                    Err(Error::RequiresValue(opt))
                 }
             }
-            State::ShortOptionCluster(_, index) | State::LongOptionWithValue(_, index) => {
-                let val = &self.args[inner.position].as_ref()[index..];
-                inner.position += 1;
-                inner.state = State::Start;
+
+            State::ShortOptionCluster(_, val) | State::LongOptionWithValue(_, val) => {
+                self.state = State::Start;
                 Ok(val)
             }
         }
     }
 
-    /// Retrieves the value passed for this option and parses it.
+    /// Retrieves an *optional* value for the current option as a
+    /// string. Only explicit values are accepted (`--flag=value`,
+    /// `-fVALUE`), and implicit values (`--flag value`, `-f VALUE`)
+    /// will simply return `None`.
     ///
-    /// This method retrieves the value passed for the last option and
-    /// parses it as any type that implements `FromStr` (and any
-    /// potential error is `Display`). It returns an error if there is
-    /// no value to return because the end of the argument list has
-    /// been reached, or if the value failed to parse.
-    ///
-    /// This function is not pure, and it mutates the state of the
-    /// parser (despite taking a shared reference to self).
+    /// This is because a subsequent flag could be interpreted as a
+    /// value if it follows a flag with an optional value, and `--flag=`
+    /// is distinct from `--flag`.
     ///
     /// # Panics
     ///
-    /// This method panics if [`next`](#method.next) has not yet been
-    /// called, or it is called twice for the same option.
+    /// This method panics if [`Options::next`] has not yet been called,
+    /// or if it is called twice for the same option.
     ///
-    /// # Examples
-    ///
-    /// Basic usage:
+    /// # Example
     ///
     /// ```
-    /// use getargs::{Error, Opt, Options, Result};
-    /// let args = ["-a1", "--bee=2.5", "-c", "see", "bar"];
-    /// let opts = Options::new(&args);
-    /// assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
-    /// let val: Result<i32> = opts.value();
-    /// assert_eq!(val, Ok(1));
-    /// assert_eq!(opts.next(), Ok(Some(Opt::Long("bee"))));
-    /// assert_eq!(opts.value::<f64>(), Ok(2.5));
-    /// assert_eq!(opts.next(), Ok(Some(Opt::Short('c'))));
-    /// assert_eq!(opts.value::<i64>(), Err(Error::InvalidValue {
-    ///     opt: Opt::Short('c'),
-    ///     desc: "invalid digit found in string".to_string(),
-    ///     value: "see",
-    /// }));
+    /// # use getargs::{Opt, Options};
+    /// #
+    /// let args = ["--opt=value", "--other-flag", "--opt", "--opt=other"];
+    /// let mut opts = Options::new(args.into_iter());
+    ///
+    /// assert_eq!(opts.next(), Ok(Some(Opt::Long("opt"))));
+    /// assert_eq!(opts.value_opt(), Some("value"));
+    /// assert_eq!(opts.next(), Ok(Some(Opt::Long("other-flag"))));
+    /// assert_eq!(opts.next(), Ok(Some(Opt::Long("opt"))));
+    /// assert_eq!(opts.value_opt(), None); // does not return "--opt=other"
+    /// assert_eq!(opts.next(), Ok(Some(Opt::Long("opt"))));
+    /// assert_eq!(opts.value_opt(), Some("other"));
+    /// assert_eq!(opts.next(), Ok(None));
     /// ```
-    pub fn value<T>(&self) -> Result<T>
-    where
-        T: FromStr,
-        T::Err: Display,
-    {
-        let opt = self.inner.borrow().state.last_opt();
-        let value = self.value_str()?;
-        T::from_str(value).map_err(|e| Error::InvalidValue {
-            opt,
-            desc: format!("{}", e),
-            value,
-        })
+    pub fn value_opt(&'_ mut self) -> Option<&'str str> {
+        match self.state {
+            State::Start | State::Positional(_) | State::End => {
+                panic!("called Options::value_opt() with no previous option")
+            }
+
+            // If the option had no explicit `=value`, return None
+            State::EndOfOption(_) => None,
+
+            State::ShortOptionCluster(_, val) | State::LongOptionWithValue(_, val) => {
+                self.state = State::Start;
+                Some(val)
+            }
+        }
     }
 
     /// Retrieves the next positional argument as a string, after the
@@ -365,189 +365,83 @@ where
     /// ```
     /// use getargs::{Opt, Options};
     /// let args = ["-a", "foo", "bar"];
-    /// let opts = Options::new(&args);
+    /// let mut opts = Options::new(args.into_iter());
     /// assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
     /// assert_eq!(opts.next(), Ok(None));
-    /// assert_eq!(opts.arg_str(), Some(&"foo"));
-    /// assert_eq!(opts.arg_str(), Some(&"bar"));
-    /// assert_eq!(opts.arg_str(), None);
+    /// assert_eq!(opts.arg(), Some("foo"));
+    /// assert_eq!(opts.arg(), Some("bar"));
+    /// assert_eq!(opts.arg(), None);
     /// ```
-    pub fn arg_str(&self) -> Option<&'a S> {
-        let mut inner = self.inner.borrow_mut();
-        match inner.state {
-            State::Start => {
-                if inner.position >= self.args.len() {
-                    None
-                } else {
-                    let arg = &self.args[inner.position];
-                    inner.position += 1;
-                    Some(arg)
-                }
+    pub fn arg(&'_ mut self) -> Option<&'str str> {
+        match self.state {
+            State::Start => self.iter.next().or_else(|| {
+                self.state = State::End;
+                None
+            }),
+            State::Positional(arg) => {
+                self.state = State::Start;
+                Some(arg)
             }
+            State::End => None,
+
             _ => panic!("called arg() while option parsing hasn't finished"),
         }
     }
 
-    /// Retrieves and parses the next positional argument, after the
-    /// options have been parsed.
+    /// Returns an iterator over the positional arguments of this
+    /// [`Options`]. The returned iterator will forward
+    /// [`Iterator::next`] calls to [`Options::arg`].
     ///
-    /// This method returns the next positional argument after the
-    /// parsed options, parsed as any type that implements `FromStr`
-    /// (and any potential error is `Display`). This method must be
-    /// called after the options has finished parsing.
+    /// This method does not panic, but [`Iterator::next`] may panic
+    /// once it is called if option parsing has not finished
+    /// ([`Options::next`] has not returned `Ok(None)`).
     ///
-    /// After this method is called, this struct may be re-used to
-    /// parse further options with [`next`](#method.next), or you can
-    /// continue getting positional arguments (which will treat
-    /// options as regular positional arguments).
+    /// # Example
     ///
-    /// This function is not pure, and it mutates the state of the
-    /// parser (despite taking a shared reference to self).
+    /// ```
+    /// # use getargs::{Opt, Options};
+    /// #
+    /// let args = ["--flag", "one", "two"];
+    /// let mut opts = Options::new(args.into_iter());
+    ///
+    /// assert_eq!(opts.next(), Ok(Some(Opt::Long("flag"))));
+    /// assert_eq!(opts.next(), Ok(None));
+    ///
+    /// let mut args = opts.args();
+    ///
+    /// assert_eq!(args.next(), Some("one"));
+    /// assert_eq!(args.next(), Some("two"));
+    /// assert_eq!(args.next(), None);
+    /// ```
+    pub fn args<'opts>(&'opts mut self) -> ArgIterator<'opts, 'str, I> {
+        ArgIterator::new(self)
+    }
+
+    /// "Restarts" options parsing if the iterator has been exhausted.
+    /// This only results in any noticeable effect if the iterator is a
+    /// repeating iterator; otherwise, nothing happens.
+    ///
+    /// A "repeating iterator" is one that starts to produce elements
+    /// again even after a call to [`Iterator::next`] returns `None`.
+    pub fn restart(&'_ mut self) {
+        self.state = match self.state {
+            State::End => State::Start,
+            _ => panic!("called Options::restart() during an iteration"),
+        }
+    }
+
+    /// Consumes this [`Options`], returning an iterator over the rest
+    /// of the arguments. The returned iterator wraps the one originally
+    /// passed to [`Options::new`].
     ///
     /// # Panics
     ///
-    /// This method panics if the option parsing is not yet complete;
-    /// that is, it panics if [`next`](#method.next) has not yet
-    /// returned `None` at least once.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// use getargs::{Error, Opt, Options, Result};
-    /// let args = ["-a", "1", "3.5", "foo"];
-    /// let opts = Options::new(&args);
-    /// assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
-    /// assert_eq!(opts.next(), Ok(None));
-    /// let arg: Result<Option<i32>> = opts.arg();
-    /// assert_eq!(arg, Ok(Some(1)));
-    /// assert_eq!(opts.arg::<f64>(), Ok(Some(3.5)));
-    /// assert_eq!(opts.arg::<i32>(), Err(Error::InvalidArg {
-    ///     desc: "invalid digit found in string".to_string(),
-    ///     value: "foo",
-    /// }));
-    /// ```
-    pub fn arg<T>(&self) -> Result<Option<T>>
-    where
-        T: FromStr,
-        T::Err: Display,
-    {
-        let arg = match self.arg_str() {
-            Some(s) => s.as_ref(),
-            None => return Ok(None),
-        };
-        match T::from_str(arg) {
-            Ok(v) => Ok(Some(v)),
-            Err(e) => Err(Error::InvalidArg {
-                desc: format!("{}", e),
-                value: arg,
-            }),
-        }
-    }
-
-    /// Retrieves the rest of the positional arguments, after the
-    /// options have been parsed.
-    ///
-    /// This method returns the list of arguments after the parsed
-    /// options.
-    ///
-    /// # Panics
-    ///
-    /// This method panics if the option parsing is not yet complete;
-    /// that is, it panics if [`next`](#method.next) has not yet
-    /// returned `None` at least once.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// use getargs::{Opt, Options};
-    /// let args = ["-a", "foo", "bar"];
-    /// let opts = Options::new(&args);
-    /// assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
-    /// assert_eq!(opts.next(), Ok(None));
-    /// assert_eq!(opts.args(), &["foo", "bar"]);
-    /// ```
-    pub fn args(&self) -> &'a [S] {
-        let inner = self.inner.borrow();
-        match inner.state {
-            State::Start => &self.args[inner.position..],
-            _ => panic!("called args() while option parsing hasn't finished"),
+    /// Panics if an option is currently being parsed.
+    pub fn into_args(self) -> IntoArgs<'str, I> {
+        match self.state {
+            State::Start | State::EndOfOption(_) | State::End => IntoArgs::new(None, self.iter),
+            State::Positional(positional) => IntoArgs::new(Some(positional), self.iter),
+            _ => panic!("called Options::into_iter() while an option's parsing hasn't finished"),
         }
     }
 }
-
-/// A short or long option.
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
-pub enum Opt<'a> {
-    /// A short option, as in `-a`.
-    Short(char),
-    /// A long option, as in `--attack`.
-    Long(&'a str),
-}
-
-impl Display for Opt<'_> {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match self {
-            Opt::Short(c) => write!(f, "-{}", c),
-            Opt::Long(s) => write!(f, "--{}", s),
-        }
-    }
-}
-
-impl From<char> for Opt<'static> {
-    fn from(ch: char) -> Opt<'static> {
-        Opt::Short(ch)
-    }
-}
-
-impl<'a> From<&'a str> for Opt<'a> {
-    fn from(s: &'a str) -> Opt<'a> {
-        Opt::Long(s)
-    }
-}
-
-// Error handling
-
-/// A parse error.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Error<'a> {
-    /// An unknown option was passed.
-    UnknownOpt(Opt<'a>),
-    /// The option requires a value, but one was not supplied.
-    RequiresValue(Opt<'a>),
-    /// The option does not require a value, but one was supplied.
-    DoesNotRequireValue(Opt<'a>),
-    /// A value for an option could not be parsed.
-    InvalidValue {
-        opt: Opt<'a>,
-        desc: String,
-        value: &'a str,
-    },
-    /// A positional argument could not be parsed.
-    InvalidArg { desc: String, value: &'a str },
-}
-
-impl Display for Error<'_> {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match self {
-            Error::UnknownOpt(opt) => write!(f, "unknown option: {}", opt),
-            Error::RequiresValue(opt) => write!(f, "option requires a value: {}", opt),
-            Error::DoesNotRequireValue(opt) => {
-                write!(f, "option does not require a value: {}", opt)
-            }
-            Error::InvalidValue { opt, desc, value } => {
-                write!(f, "invalid value for option '{}': {}: {}", opt, desc, value)
-            }
-            Error::InvalidArg { desc, value } => {
-                write!(f, "invalid value for argument: {}: {}", desc, value)
-            }
-        }
-    }
-}
-
-impl StdError for Error<'_> {}
-
-pub type Result<'a, T> = StdResult<T, Error<'a>>;
