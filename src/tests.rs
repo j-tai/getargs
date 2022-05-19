@@ -191,9 +191,11 @@ fn end_of_options() {
     assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
     assert_eq!(opts.next(), Ok(Some(Opt::Long("bee"))));
     assert_eq!(opts.next(), Ok(None));
+    assert!(opts.opts_ended());
     assert_eq!(opts.arg(), Some("--see"));
     assert_eq!(opts.arg(), Some("-d"));
     assert_eq!(opts.arg(), None);
+    assert!(!opts.opts_ended());
 }
 
 #[test]
@@ -240,9 +242,11 @@ fn keep_retrieving_options_2() {
     let mut opts = Options::new(args.into_iter());
     assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
     assert_eq!(opts.next(), Ok(None));
+    assert!(opts.opts_ended());
     assert_eq!(opts.next(), Ok(Some(Opt::Short('b'))));
     assert_eq!(opts.next(), Ok(Some(Opt::Long("see"))));
     assert_eq!(opts.next(), Ok(None));
+    assert!(!opts.opts_ended());
 }
 
 // Things you definitely shouldn't do
@@ -284,6 +288,96 @@ fn value_after_arg() {
     let mut opts = Options::new(args.into_iter());
     let _ = opts.arg(); // ay
     let _ = opts.value(); // no option retrieved yet
+}
+
+#[test]
+fn bytes() {
+    let args = [
+        b"-ohi".as_slice(),
+        b"--opt=HI",
+        b"-o",
+        b"hi",
+        b"--opt",
+        b"hi",
+        b"--optional",
+        b"--optional=value",
+        b"-O",
+        b"-Ovalue",
+        b"--",
+        b"one",
+        b"two",
+    ];
+
+    let mut opts = Options::new(args.into_iter());
+
+    assert_eq!(opts.next(), Ok(Some(Opt::Short(b'o'))));
+    assert_eq!(opts.value(), Ok(b"hi".as_slice()));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long(b"opt".as_slice()))));
+    assert_eq!(opts.value(), Ok(b"HI".as_slice()));
+    assert_eq!(opts.next(), Ok(Some(Opt::Short(b'o'))));
+    assert_eq!(opts.value(), Ok(b"hi".as_slice()));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long(b"opt".as_slice()))));
+    assert_eq!(opts.value(), Ok(b"hi".as_slice()));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long(b"optional".as_slice()))));
+    assert_eq!(opts.value_opt(), None);
+    assert_eq!(opts.next(), Ok(Some(Opt::Long(b"optional".as_slice()))));
+    assert_eq!(opts.value_opt(), Some(b"value".as_slice()));
+    assert_eq!(opts.next(), Ok(Some(Opt::Short(b'O'))));
+    assert_eq!(opts.value_opt(), None);
+    assert_eq!(opts.next(), Ok(Some(Opt::Short(b'O'))));
+    assert_eq!(opts.value_opt(), Some(b"value".as_slice()));
+    assert_eq!(opts.next(), Ok(None));
+    assert!(opts.opts_ended());
+    assert_eq!(opts.arg(), Some(b"one".as_slice()));
+    assert_eq!(opts.arg(), Some(b"two".as_slice()));
+    assert_eq!(opts.arg(), None);
+    assert!(!opts.opts_ended());
+}
+
+#[test]
+fn alternating() {
+    let args = [
+        "--flag",
+        "positional",
+        "--flag2",
+        "positional2",
+        "positional3",
+        "--flag3=value",
+        "final",
+        "--justkidding",
+    ];
+
+    let mut opts = Options::new(args.into_iter());
+
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("flag"))));
+    assert_eq!(opts.next(), Ok(None));
+    assert_eq!(opts.arg(), Some("positional"));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("flag2"))));
+    assert_eq!(opts.next(), Ok(None));
+    assert_eq!(opts.arg(), Some("positional2"));
+    assert_eq!(opts.next(), Ok(None));
+    assert_eq!(opts.arg(), Some("positional3"));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("flag3"))));
+    assert_eq!(opts.value(), Ok("value"));
+    assert_eq!(opts.next(), Ok(None));
+    assert_eq!(opts.arg(), Some("final"));
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("justkidding"))));
+    assert_eq!(opts.next(), Ok(None));
+    assert_eq!(opts.arg(), None);
+}
+
+#[test]
+fn does_not_require_value_continue() {
+    let args = ["--flag=value", "--flag2"];
+    let mut opts = Options::new(args.into_iter());
+
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("flag"))));
+    assert_eq!(
+        opts.next(),
+        Err(Error::DoesNotRequireValue(Opt::Long("flag")))
+    );
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("flag2"))));
+    assert_eq!(opts.next(), Ok(None));
 }
 
 struct RepeatingIterator<T, I: Iterator<Item = T>, F: FnMut() -> I>(Option<I>, F);
