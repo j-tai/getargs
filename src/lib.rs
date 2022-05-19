@@ -21,30 +21,30 @@
 //! #[derive(Clone, Eq, PartialEq, Debug, thiserror::Error)]
 //! enum Error<'str> {
 //!     #[error("{0:?}")]
-//!     Getargs(getargs::Error<'str>),
+//!     Getargs(getargs::Error<&'str str>),
 //!     #[error("parsing version: {0}")]
 //!     VersionParseError(ParseIntError),
 //!     #[error("unknown option: {0}")]
-//!     UnknownOption(Opt<'str>)
+//!     UnknownOption(Opt<&'str str>)
 //! }
 //!
-//! impl<'str> From<getargs::Error<'str>> for Error<'str> {
-//!     fn from(error: getargs::Error<'str>) -> Self {
+//! impl<'arg> From<getargs::Error<&'arg str>> for Error<'arg> {
+//!     fn from(error: getargs::Error<&'arg str>) -> Self {
 //!         Self::Getargs(error)
 //!     }
 //! }
 //!
 //! // You are recommended to create a struct to hold your arguments
 //! #[derive(Default, Debug)]
-//! struct MyArgsStruct<'a> {
+//! struct MyArgsStruct<'str> {
 //!     attack_mode: bool,
 //!     em_dashes: bool,
-//!     execute: &'a str,
+//!     execute: &'str str,
 //!     set_version: u32,
-//!     positional_args: Vec<&'a str>,
+//!     positional_args: Vec<&'str str>,
 //! }
 //!
-//! fn parse_args<'a, 'str, I: Iterator<Item = &'str str>>(opts: &'a mut Options<'str, I>) -> Result<MyArgsStruct<'str>, Error<'str>> {
+//! fn parse_args<'a, 'str, I: Iterator<Item = &'str str>>(opts: &'a mut Options<&'str str, I>) -> Result<MyArgsStruct<'str>, Error<'str>> {
 //!     let mut res = MyArgsStruct::default();
 //!     while let Some(opt) = opts.next()? {
 //!         match opt {
@@ -86,133 +86,162 @@ mod iter;
 mod opt;
 #[cfg(test)]
 mod tests;
+mod traits;
 
 pub use error::{Error, Result};
 pub use iter::{ArgIterator, IntoArgs};
 pub use opt::Opt;
+pub use traits::Argument;
 
 /// An argument parser.
 ///
 /// See the [crate documentation](index.html) for more details.
-pub struct Options<'str, I>
-where
-    I: Iterator<Item = &'str str>,
-{
+#[derive(Copy, Clone, Debug)]
+pub struct Options<A: Argument, I: Iterator<Item = A>> {
     /// Iterator over the arguments.
     iter: I,
     /// State information.
-    state: State<'str>,
+    state: State<A>,
 }
 
 #[derive(Copy, Clone, Debug)]
-enum State<'str> {
+enum State<A: Argument> {
     /// The starting state. We may not get a value because there is no
     /// previous option. We may get a positional argument or an
     /// option.
-    Start,
+    Start { ended_opts: bool },
     /// We found a positional option and want to preserve it, since it
     /// will no longer be returned from the iterator.
-    Positional(&'str str),
+    Positional(A),
     /// We have just finished parsing an option, be it short or long,
     /// and we don't know whether the next argument is considered a
     /// value for the option or a positional argument. From here, we
     /// can get the next option, the next value, or the next
     /// positional argument.
-    EndOfOption(Opt<'str>),
+    EndOfOption(Opt<A>),
     /// We are in the middle of a cluster of short options. From here,
     /// we can get the next short option, or we can get the value for
     /// the last short option. We may not get a positional argument.
-    ShortOptionCluster(Opt<'str>, &'str str),
+    ShortOptionCluster(Opt<A>, A),
     /// We just consumed a long option with a value attached with `=`,
     /// e.g. `--execute=expression`. We must get the following value.
-    LongOptionWithValue(Opt<'str>, &'str str),
+    LongOptionWithValue(Opt<A>, A),
     /// We have recieved `None` from the iterator and we are refusing to
     /// advance to be polite.
     End,
 }
 
-impl<'str, I> Options<'str, I>
-where
-    I: Iterator<Item = &'str str>,
-{
-    /// Creates a new argument parser given an arguments iterator.
+impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
+    /// Creates a new [`Options`] given an iterator over arguments of
+    /// type [`A`].
     ///
-    /// The argument parser only lives as long as the iterator,
-    /// but returns strings with the same lifetime as whatever the
+    /// The argument parser only lives as long as the iterator, but
+    /// returns arguments with the same lifetime as whatever the
     /// iterator yields.
-    pub fn new(iter: I) -> Options<'str, I> {
+    pub fn new(iter: I) -> Options<A, I> {
         Options {
             iter,
-            state: State::Start,
+            state: State::Start { ended_opts: false },
         }
     }
 
     /// Retrieves the next option.
     ///
-    /// Returns `None` if there are no more options. Returns
-    /// `Some(Err(..))` if a parse error occurs.
+    /// Returns `Ok(None)` if there are no more options, or `Err(..)` if
+    /// a parse error occurs.
     ///
-    /// This method mutates the state of the parser (despite taking a
-    /// shared reference to self).
-    ///
-    /// This method does not retrieve any value that goes with the
+    /// This method also does not retrieve any value that goes with an
     /// option. If the option requires an value, such as in
-    /// `--option=value`, then you should call [`value`] after
-    /// getting the option.
+    /// `--option=value`, then you should call [`value`][Options::value]
+    /// after receiving the option from this method. Alternatively, you
+    /// can call [`value_opt`][Options::value_opt] for optional values.
+    ///
+    /// Once this method returns `None`, then you should make sure to
+    /// use [`arg`][Options::arg] or [`args`][Options::args] to get the
+    /// values of the following positional arguments.
+    ///
+    /// If your application accepts positional arguments in between
+    /// flags (not recommended), you can continue to call `next` after
+    /// each call to `arg` for as long as `arg` returns `Some`.
+    ///
+    /// This method is not an implementation of [`Iterator`] because
+    /// `for` loops borrow the iterator for the duration of the loop,
+    /// making it impossible to call methods like
+    /// [`value`][Options::value]. Instead, use a `while let` loop to
+    /// iterate over the options. This is reflected in the examples.
     ///
     /// # Examples
     ///
     /// Basic usage:
     ///
     /// ```
-    /// use getargs::{Opt, Options};
+    /// # use getargs::{Opt, Options};
+    /// #
     /// let args = ["-a", "--bee", "foo"];
     /// let mut opts = Options::new(args.into_iter());
+    ///
     /// assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
     /// assert_eq!(opts.next(), Ok(Some(Opt::Long("bee"))));
     /// assert_eq!(opts.next(), Ok(None));
+    ///
+    /// // Don't forget the positional arguments!
+    /// assert_eq!(opts.arg(), Some("foo"));
+    /// assert_eq!(opts.arg(), None);
+    /// ```
+    ///
+    /// Retrieving values from options:
+    ///
+    /// ```
+    /// # use getargs::{Opt, Options};
+    /// #
+    /// let args = ["--cupcake=value", "-b", "value2", "-v", "foo"];
+    /// let mut opts = Options::new(args.into_iter());
+    ///
+    /// assert_eq!(opts.next(), Ok(Some(Opt::Long("cupcake"))));
+    /// assert_eq!(opts.value(), Ok("value"));
+    /// assert_eq!(opts.next(), Ok(Some(Opt::Short('b'))));
+    /// assert_eq!(opts.value(), Ok("value2"));
+    /// assert_eq!(opts.next(), Ok(Some(Opt::Short('v'))));
+    /// assert_eq!(opts.next(), Ok(None));
+    /// assert_eq!(opts.arg(), Some("foo"));
+    /// assert_eq!(opts.arg(), None);
     /// ```
     #[allow(clippy::should_implement_trait)] // `for` loops are not useful here
-    pub fn next(&'_ mut self) -> Result<'str, Option<Opt<'str>>> {
+    pub fn next(&'_ mut self) -> Result<A, Option<Opt<A>>> {
         match self.state {
-            State::Start | State::EndOfOption(_) => {
+            State::Start { .. } | State::EndOfOption(_) => {
                 let next = self.iter.next();
+
                 if next.is_none() {
                     self.state = State::End;
                     return Ok(None);
                 }
+
                 let arg = next.unwrap();
-                if arg == "--" {
-                    // End of options
-                    self.state = State::Start;
+
+                if arg.ends_opts() {
+                    self.state = State::Start { ended_opts: true };
                     Ok(None)
-                } else if arg == "-" {
-                    // "-" is a positional argument
-                    self.state = State::Positional(arg);
-                    Ok(None)
-                } else if let Some(flag) = arg.strip_prefix("--") {
-                    // Long option
-                    if let Some((flag, value)) = flag.split_once('=') {
-                        // Long option with value
-                        let opt = Opt::Long(flag);
+                } else if let Some((name, value)) = arg.parse_long_opt() {
+                    let opt = Opt::Long(name);
+
+                    if let Some(value) = value {
                         self.state = State::LongOptionWithValue(opt, value);
-                        Ok(Some(opt))
                     } else {
-                        // Long option without value
-                        let opt = Opt::Long(flag);
                         self.state = State::EndOfOption(opt);
-                        Ok(Some(opt))
                     }
-                } else if let Some(chars) = arg.strip_prefix('-') {
-                    // Short option
-                    let ch = chars.chars().next().unwrap();
-                    let opt = Opt::Short(ch);
-                    let rest = &chars[ch.len_utf8()..];
-                    if rest.is_empty() {
-                        self.state = State::EndOfOption(opt);
+
+                    Ok(Some(opt))
+                } else if let Some(cluster) = arg.parse_short_cluster() {
+                    let (opt, rest) = cluster.consume_short_opt();
+                    let opt = Opt::Short(opt);
+
+                    if let Some(rest) = rest {
+                        self.state = State::ShortOptionCluster(opt, rest);
                     } else {
-                        self.state = State::ShortOptionCluster(opt, rest)
+                        self.state = State::EndOfOption(opt);
                     }
+
                     Ok(Some(opt))
                 } else {
                     // Positional argument
@@ -222,35 +251,47 @@ where
             }
 
             State::ShortOptionCluster(_, rest) => {
-                let ch = rest.chars().next().unwrap();
-                let opt = Opt::Short(ch);
-                let rest = &rest[ch.len_utf8()..];
-                if rest.is_empty() {
-                    self.state = State::EndOfOption(opt);
-                } else {
+                let (opt, rest) = rest.consume_short_opt();
+                let opt = Opt::Short(opt);
+
+                if let Some(rest) = rest {
                     self.state = State::ShortOptionCluster(opt, rest);
+                } else {
+                    self.state = State::EndOfOption(opt);
                 }
+
                 Ok(Some(opt))
             }
 
-            State::LongOptionWithValue(opt, _) => Err(Error::DoesNotRequireValue(opt)),
+            State::LongOptionWithValue(opt, _) => {
+                self.state = State::Start { ended_opts: false };
+                Err(Error::DoesNotRequireValue(opt))
+            }
 
             State::Positional(_) | State::End => Ok(None),
         }
     }
 
-    /// Retrieves the value passed for this option as a string.
+    /// Returns `true` if the last call to [`Options::next`] encountered
+    /// a `--`. In that case, it will have returned `None`, but without
+    /// this method you wouldn't be able to tell whether that was due to
+    /// the `--` or simply the next argument being positional (or not
+    /// existing).
+    pub fn opts_ended(&self) -> bool {
+        matches!(self.state, State::Start { ended_opts: true })
+    }
+
+    /// Retrieves the value passed to the option last returned by
+    /// [`next`][Options::next].
     ///
     /// This function returns an error if there is no value to return
     /// because the end of the argument list has been reached.
     ///
-    /// This function is not pure, and it mutates the state of the
-    /// parser (despite taking a shared reference to self).
-    ///
     /// # Panics
     ///
-    /// This method panics if [`next`](#method.next) has not yet been
-    /// called, or it is called twice for the same option.
+    /// This method panics if [`next`][Options::next] has not yet been
+    /// called, if `value` is called twice for the same option, or if
+    /// the last call to `next` did not return an option.
     ///
     /// # Examples
     ///
@@ -267,15 +308,15 @@ where
     /// assert_eq!(opts.next(), Ok(Some(Opt::Short('c'))));
     /// assert_eq!(opts.value(), Ok("see"));
     /// ```
-    pub fn value(&'_ mut self) -> Result<'str, &'str str> {
+    pub fn value(&'_ mut self) -> Result<A, A> {
         match self.state {
-            State::Start | State::Positional(_) | State::End => {
+            State::Start { .. } | State::Positional(_) | State::End => {
                 panic!("called Options::value() with no previous option")
             }
 
             State::EndOfOption(opt) => {
                 if let Some(val) = self.iter.next() {
-                    self.state = State::Start;
+                    self.state = State::Start { ended_opts: false };
                     Ok(val)
                 } else {
                     self.state = State::End;
@@ -283,26 +324,34 @@ where
                 }
             }
 
-            State::ShortOptionCluster(_, val) | State::LongOptionWithValue(_, val) => {
-                self.state = State::Start;
+            State::ShortOptionCluster(_, val) => {
+                self.state = State::Start { ended_opts: false };
+                Ok(val.consume_short_val())
+            }
+
+            State::LongOptionWithValue(_, val) => {
+                self.state = State::Start { ended_opts: false };
                 Ok(val)
             }
         }
     }
 
-    /// Retrieves an *optional* value for the current option as a
-    /// string. Only explicit values are accepted (`--flag=value`,
-    /// `-fVALUE`), and implicit values (`--flag value`, `-f VALUE`)
-    /// will simply return `None`.
+    /// Retrieves an *optional* value for the option last returned by
+    /// [`next`][Options::next]. Only explicit values are accepted
+    /// (`--flag=VALUE`, `-fVALUE`). Implicit values (`--flag VALUE`,
+    /// `-f VALUE`) will not be consumed, and they will return `None`.
     ///
-    /// This is because a subsequent flag could be interpreted as a
-    /// value if it follows a flag with an optional value, and `--flag=`
-    /// is distinct from `--flag`.
+    /// If implicit values were to be parsed by this function, a
+    /// subsequent flag could be mistaken as the value. `--flag=` also
+    /// needs to be distinct from `--flag` - the former has an empty
+    /// value, whereas the latter has no value, and will not attempt to
+    /// consume the next argument.
     ///
     /// # Panics
     ///
     /// This method panics if [`Options::next`] has not yet been called,
-    /// or if it is called twice for the same option.
+    /// if `value_opt` is called twice for the same option, or if the
+    /// last call to `next` did not return an option.
     ///
     /// # Example
     ///
@@ -321,9 +370,9 @@ where
     /// assert_eq!(opts.value_opt(), Some("other"));
     /// assert_eq!(opts.next(), Ok(None));
     /// ```
-    pub fn value_opt(&'_ mut self) -> Option<&'str str> {
+    pub fn value_opt(&'_ mut self) -> Option<A> {
         match self.state {
-            State::Start | State::Positional(_) | State::End => {
+            State::Start { .. } | State::Positional(_) | State::End => {
                 panic!("called Options::value_opt() with no previous option")
             }
 
@@ -331,31 +380,24 @@ where
             State::EndOfOption(_) => None,
 
             State::ShortOptionCluster(_, val) | State::LongOptionWithValue(_, val) => {
-                self.state = State::Start;
+                self.state = State::Start { ended_opts: false };
                 Some(val)
             }
         }
     }
 
-    /// Retrieves the next positional argument as a string, after the
-    /// options have been parsed.
-    ///
-    /// This method returns the next positional argument after the
-    /// parsed options as a string. This method must be called after
-    /// the options has finished parsing.
+    /// Retrieves the next positional argument. This method must be
+    /// called after all available options have been parsed.
     ///
     /// After this method is called, this struct may be re-used to
-    /// parse further options with [`next`](#method.next), or you can
+    /// parse further options with [`next`][Options::next], or you can
     /// continue getting positional arguments (which will treat
     /// options as regular positional arguments).
-    ///
-    /// This function is not pure, and it mutates the state of the
-    /// parser (despite taking a shared reference to self).
     ///
     /// # Panics
     ///
     /// This method panics if the option parsing is not yet complete;
-    /// that is, it panics if [`next`](#method.next) has not yet
+    /// that is, it panics if [`next`][Options::next] has not yet
     /// returned `None` at least once.
     ///
     /// # Examples
@@ -372,16 +414,18 @@ where
     /// assert_eq!(opts.arg(), Some("bar"));
     /// assert_eq!(opts.arg(), None);
     /// ```
-    pub fn arg(&'_ mut self) -> Option<&'str str> {
+    pub fn arg(&'_ mut self) -> Option<A> {
         match self.state {
-            State::Start => self.iter.next().or_else(|| {
+            State::Start { .. } => self.iter.next().or_else(|| {
                 self.state = State::End;
                 None
             }),
+
             State::Positional(arg) => {
-                self.state = State::Start;
+                self.state = State::Start { ended_opts: false };
                 Some(arg)
             }
+
             State::End => None,
 
             _ => panic!("called arg() while option parsing hasn't finished"),
@@ -413,19 +457,22 @@ where
     /// assert_eq!(args.next(), Some("two"));
     /// assert_eq!(args.next(), None);
     /// ```
-    pub fn args<'opts>(&'opts mut self) -> ArgIterator<'opts, 'str, I> {
+    pub fn args(&mut self) -> ArgIterator<A, I> {
         ArgIterator::new(self)
     }
 
-    /// "Restarts" options parsing if the iterator has been exhausted.
-    /// This only results in any noticeable effect if the iterator is a
-    /// repeating iterator; otherwise, nothing happens.
+    /// "Restarts" options parsing if the iterator has been exhausted
+    /// ([`Options::arg`] returned `None`). This only results in any
+    /// noticeable effect if the iterator is a repeating iterator;
+    /// otherwise, the iterator will never produce more arguments
+    /// anyway.
     ///
-    /// A "repeating iterator" is one that starts to produce elements
-    /// again even after a call to [`Iterator::next`] returns `None`.
+    /// Most iterators, including iterators over arrays, never repeat
+    /// their elements. This method isn't very useful unless you know
+    /// the exact behavior of the iterator you're using.
     pub fn restart(&'_ mut self) {
         self.state = match self.state {
-            State::End => State::Start,
+            State::End => State::Start { ended_opts: false },
             _ => panic!("called Options::restart() during an iteration"),
         }
     }
@@ -437,9 +484,11 @@ where
     /// # Panics
     ///
     /// Panics if an option is currently being parsed.
-    pub fn into_args(self) -> IntoArgs<'str, I> {
+    pub fn into_args(self) -> IntoArgs<A, I> {
         match self.state {
-            State::Start | State::EndOfOption(_) | State::End => IntoArgs::new(None, self.iter),
+            State::Start { .. } | State::EndOfOption(_) | State::End => {
+                IntoArgs::new(None, self.iter)
+            }
             State::Positional(positional) => IntoArgs::new(Some(positional), self.iter),
             _ => panic!("called Options::into_iter() while an option's parsing hasn't finished"),
         }

@@ -1,4 +1,4 @@
-use crate::Options;
+use crate::{Argument, Options};
 
 /// An iterator over the positional arguments of an [`Options`]. Calls
 /// to [`Iterator::next`] will forward to [`Options::arg`]. This
@@ -21,18 +21,18 @@ use crate::Options;
 /// assert_eq!(args.next(), Some("two"));
 /// assert_eq!(args.next(), None);
 /// ```
-pub struct ArgIterator<'opts, 'str, I: Iterator<Item = &'str str>> {
-    inner: &'opts mut Options<'str, I>,
+pub struct ArgIterator<'opts, A: Argument, I: Iterator<Item = A>> {
+    inner: &'opts mut Options<A, I>,
 }
 
-impl<'opts, 'str, I: Iterator<Item = &'str str>> ArgIterator<'opts, 'str, I> {
-    pub(crate) fn new(inner: &'opts mut Options<'str, I>) -> Self {
+impl<'opts, A: Argument, I: Iterator<Item = A>> ArgIterator<'opts, A, I> {
+    pub(crate) fn new(inner: &'opts mut Options<A, I>) -> Self {
         Self { inner }
     }
 }
 
-impl<'opts, 'str, I: Iterator<Item = &'str str>> Iterator for ArgIterator<'opts, 'str, I> {
-    type Item = &'str str;
+impl<'opts, A: Argument, I: Iterator<Item = A>> Iterator for ArgIterator<'opts, A, I> {
+    type Item = A;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.arg()
@@ -60,19 +60,19 @@ impl<'opts, 'str, I: Iterator<Item = &'str str>> Iterator for ArgIterator<'opts,
 /// assert_eq!(iter.next(), Some("two"));
 /// assert_eq!(iter.next(), None);
 /// ```
-pub struct IntoArgs<'str, I: Iterator<Item = &'str str>> {
-    positional: Option<&'str str>,
+pub struct IntoArgs<A: Argument, I: Iterator<Item = A>> {
+    positional: Option<A>,
     iter: I,
 }
 
-impl<'str, I: Iterator<Item = &'str str>> IntoArgs<'str, I> {
-    pub(crate) fn new(positional: Option<&'str str>, iter: I) -> Self {
+impl<A: Argument, I: Iterator<Item = A>> IntoArgs<A, I> {
+    pub(crate) fn new(positional: Option<A>, iter: I) -> Self {
         Self { positional, iter }
     }
 }
 
-impl<'str, I: Iterator<Item = &'str str>> Iterator for IntoArgs<'str, I> {
-    type Item = &'str str;
+impl<A: Argument, I: Iterator<Item = A>> Iterator for IntoArgs<A, I> {
+    type Item = A;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.positional.take().or_else(|| self.iter.next())
