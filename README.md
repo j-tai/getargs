@@ -18,6 +18,7 @@ An argument parser that is truly zero-cost, similar to getopts.
 * Zero allocation
 * Simple to use yet versatile
 * `#![no_std]`-compatible
+* Compatible with `&str` and `&[u8]` (`OsStr` requires manual conversion)
 
 ## Example
 
@@ -30,30 +31,30 @@ use std::num::ParseIntError;
 #[derive(Clone, Eq, PartialEq, Debug, thiserror::Error)]
 enum Error<'str> {
     #[error("{0:?}")]
-    Getargs(getargs::Error<'str>),
+    Getargs(getargs::Error<&'str str>),
     #[error("parsing version: {0}")]
     VersionParseError(ParseIntError),
     #[error("unknown option: {0}")]
-    UnknownOption(Opt<'str>)
+    UnknownOption(Opt<&'str str>)
 }
 
-impl<'str> From<getargs::Error<'str>> for Error<'str> {
-    fn from(error: getargs::Error<'str>) -> Self {
+impl<'arg> From<getargs::Error<&'arg str>> for Error<'arg> {
+    fn from(error: getargs::Error<&'arg str>) -> Self {
         Self::Getargs(error)
     }
 }
 
 // You are recommended to create a struct to hold your arguments
 #[derive(Default, Debug)]
-struct MyArgsStruct<'a> {
+struct MyArgsStruct<'str> {
     attack_mode: bool,
     em_dashes: bool,
-    execute: &'a str,
+    execute: &'str str,
     set_version: u32,
-    positional_args: Vec<&'a str>,
+    positional_args: Vec<&'str str>,
 }
 
-fn parse_args<'a, 'str, I: Iterator<Item = &'str str>>(opts: &'a mut Options<'str, I>) -> Result<MyArgsStruct<'str>, Error<'str>> {
+fn parse_args<'a, 'str, I: Iterator<Item = &'str str>>(opts: &'a mut Options<&'str str, I>) -> Result<MyArgsStruct<'str>, Error<'str>> {
     let mut res = MyArgsStruct::default();
     while let Some(opt) = opts.next()? {
         match opt {

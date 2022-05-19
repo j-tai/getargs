@@ -17,6 +17,7 @@ std = []
 default = ["std"]
 
 [dependencies]
+# None!
 
 [dev-dependencies]
 argv = "~0.1.5"
