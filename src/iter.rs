@@ -1,7 +1,8 @@
 use crate::{Argument, Options};
 
-/// An iterator over the positional arguments of an [`Options`]. Calls
-/// to [`Iterator::next`] will forward to [`Options::arg`]. This
+/// An iterator over the positional arguments of an [`Options`].
+///
+/// Calls to [`Iterator::next`] will forward to [`Options::arg`]. This
 /// iterator can be obtained by calling [`Options::args`].
 ///
 /// # Example
@@ -40,8 +41,10 @@ impl<'opts, A: Argument, I: Iterator<Item = A>> Iterator for ArgIterator<'opts, 
 }
 
 /// An iterator over what used to be the positional arguments of an
-/// [`Options`][crate::Options]. This iterator can be obtained by
-/// calling [`Options::into_args`][crate::Options::into_args].
+/// [`Options`][crate::Options].
+///
+/// This iterator can be obtained by calling
+/// [`Options::into_args`][crate::Options::into_args].
 ///
 /// # Example
 ///

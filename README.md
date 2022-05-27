@@ -1,12 +1,25 @@
 # getargs
 
-An argument parser that is truly zero-cost, similar to getopts.
+An argument parser that is truly zero-cost, similar to Unix's `getopts`.
+
+## About
+
+`getargs` is a low-level, efficient and versatile argument parser that
+works similarly to `getopts`. It works by producing a stream of options,
+and after each option, your code decides whether to require and retrieve
+the value for the option or not.
+
+You don't have to declare a list of valid options up-front, so `getargs`
+does not have to allocate space for them or spend runtime searching for
+them. This also means that you have to write your own help message, but
+since `--help` is just another flag, there are no restrictions on what
+you do with it.
 
 ## Features
 
 * Short `-f` and long `--flag` flags
-* Required implicit values `-i value` and `--implicit value`
-* Required or optional explicit values `-eVALUE` and `--explicit=value`
+* Required implicit values `-i VALUE` and `--implicit VALUE`
+* Required or optional explicit values `-eVALUE` and `--explicit=VALUE`
 * Positional arguments and `--`
 
 ## Benefits
@@ -18,7 +31,7 @@ An argument parser that is truly zero-cost, similar to getopts.
 * Zero allocation
 * Simple to use yet versatile
 * `#![no_std]`-compatible
-* Compatible with `&str` and `&[u8]` (`OsStr` requires manual conversion)
+* Compatible with `&str` and `&[u8]`
 
 ## Example
 
