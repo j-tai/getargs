@@ -8,6 +8,7 @@ fn no_options() {
     assert_eq!(opts.arg(), Some("foo"));
     assert_eq!(opts.arg(), Some("bar"));
     assert_eq!(opts.arg(), None);
+    assert!(opts.is_empty());
 }
 
 #[test]
@@ -21,6 +22,7 @@ fn short_options() {
     assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg(), Some("bar"));
     assert_eq!(opts.arg(), None);
+    assert!(opts.is_empty());
 }
 
 #[test]
@@ -34,6 +36,7 @@ fn short_cluster() {
     assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg(), Some("bar"));
     assert_eq!(opts.arg(), None);
+    assert!(opts.is_empty());
 }
 
 #[test]
@@ -47,6 +50,7 @@ fn long_options() {
     assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg(), Some("bar"));
     assert_eq!(opts.arg(), None);
+    assert!(opts.is_empty());
 }
 
 #[test]
@@ -60,6 +64,7 @@ fn short_option_with_value() {
     assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg(), Some("bar"));
     assert_eq!(opts.arg(), None);
+    assert!(opts.is_empty());
 }
 
 #[test]
@@ -74,6 +79,7 @@ fn short_cluster_with_value() {
     assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg(), Some("bar"));
     assert_eq!(opts.arg(), None);
+    assert!(opts.is_empty());
 }
 
 #[test]
@@ -89,6 +95,7 @@ fn long_option_with_value() {
     assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg(), Some("bar"));
     assert_eq!(opts.arg(), None);
+    assert!(opts.is_empty());
 }
 
 #[test]
@@ -114,6 +121,7 @@ fn value_with_dash() {
     assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg(), Some("bar"));
     assert_eq!(opts.arg(), None);
+    assert!(opts.is_empty());
 }
 
 #[test]
@@ -124,6 +132,7 @@ fn no_positional() {
     assert_eq!(opts.value(), Ok("ay"));
     assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg(), None);
+    assert!(opts.is_empty());
 }
 
 #[test]
@@ -137,6 +146,7 @@ fn long_option_with_empty_value() {
     assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg(), Some("bar"));
     assert_eq!(opts.arg(), None);
+    assert!(opts.is_empty());
 }
 
 #[test]
@@ -145,6 +155,7 @@ fn short_option_with_missing_value() {
     let mut opts = Options::new(args.into_iter());
     assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
     assert_eq!(opts.value(), Err(Error::RequiresValue(Opt::Short('a'))));
+    assert!(opts.is_empty());
 }
 
 #[test]
@@ -156,6 +167,7 @@ fn long_option_with_unexpected_value() {
         opts.next(),
         Err(Error::DoesNotRequireValue(Opt::Long("ay"))),
     );
+    assert!(!opts.is_empty());
 }
 
 #[test]
@@ -164,6 +176,7 @@ fn long_option_with_missing_value() {
     let mut opts = Options::new(args.into_iter());
     assert_eq!(opts.next(), Ok(Some(Opt::Long("ay"))));
     assert_eq!(opts.value(), Err(Error::RequiresValue(Opt::Long("ay"))));
+    assert!(opts.is_empty());
 }
 
 #[test]
@@ -173,6 +186,7 @@ fn short_option_at_end() {
     assert_eq!(opts.next(), Ok(Some(Opt::Short('a'))));
     assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg(), None);
+    assert!(opts.is_empty());
 }
 
 #[test]
@@ -182,6 +196,7 @@ fn long_option_at_end() {
     assert_eq!(opts.next(), Ok(Some(Opt::Long("ay"))));
     assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg(), None);
+    assert!(opts.is_empty());
 }
 
 #[test]
@@ -196,6 +211,7 @@ fn end_of_options() {
     assert_eq!(opts.arg(), Some("-d"));
     assert_eq!(opts.arg(), None);
     assert!(!opts.opts_ended());
+    assert!(opts.is_empty());
 }
 
 #[test]
@@ -209,6 +225,7 @@ fn lone_dash() {
     assert_eq!(opts.arg(), Some("--see"));
     assert_eq!(opts.arg(), Some("-d"));
     assert_eq!(opts.arg(), None);
+    assert!(opts.is_empty());
 }
 
 #[test]
@@ -221,6 +238,8 @@ fn subcommand() {
     assert_eq!(opts.next(), Ok(Some(Opt::Short('b'))));
     assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg(), Some("arg"));
+    assert_eq!(opts.arg(), None);
+    assert!(opts.is_empty());
 }
 
 // Things you shouldn't need too often
@@ -234,6 +253,7 @@ fn keep_retrieving_options() {
     assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.next(), Ok(None));
+    assert!(!opts.is_empty());
 }
 
 #[test]
@@ -247,6 +267,7 @@ fn keep_retrieving_options_2() {
     assert_eq!(opts.next(), Ok(Some(Opt::Long("see"))));
     assert_eq!(opts.next(), Ok(None));
     assert!(!opts.opts_ended());
+    assert!(opts.is_empty());
 }
 
 // Things you definitely shouldn't do
@@ -271,6 +292,7 @@ fn keep_taking_args() {
     assert_eq!(opts.arg(), None);
     assert_eq!(opts.arg(), None);
     assert_eq!(opts.arg(), None);
+    assert!(opts.is_empty());
 }
 
 #[test]
@@ -332,6 +354,7 @@ fn bytes() {
     assert_eq!(opts.arg(), Some(b"two".as_slice()));
     assert_eq!(opts.arg(), None);
     assert!(!opts.opts_ended());
+    assert!(opts.is_empty());
 }
 
 #[test]
@@ -364,6 +387,7 @@ fn alternating() {
     assert_eq!(opts.next(), Ok(Some(Opt::Long("justkidding"))));
     assert_eq!(opts.next(), Ok(None));
     assert_eq!(opts.arg(), None);
+    assert!(opts.is_empty());
 }
 
 #[test]
@@ -378,6 +402,52 @@ fn does_not_require_value_continue() {
     );
     assert_eq!(opts.next(), Ok(Some(Opt::Long("flag2"))));
     assert_eq!(opts.next(), Ok(None));
+    assert!(opts.is_empty());
+}
+
+#[test]
+fn args() {
+    let args = ["--flag=value", "--flag2", "--", "arg1", "arg2"];
+    let mut opts = Options::new(args.into_iter());
+
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("flag"))));
+    assert_eq!(
+        opts.next(),
+        Err(Error::DoesNotRequireValue(Opt::Long("flag")))
+    );
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("flag2"))));
+    assert_eq!(opts.next(), Ok(None));
+    assert!(opts.opts_ended());
+    assert!(!opts.is_empty());
+
+    let mut args = opts.args();
+
+    assert_eq!(args.next(), Some("arg1"));
+    assert_eq!(args.next(), Some("arg2"));
+    assert_eq!(args.next(), None);
+    assert!(opts.is_empty());
+}
+
+#[test]
+fn into_args() {
+    let args = ["--flag=value", "--flag2", "--", "arg1", "arg2"];
+    let mut opts = Options::new(args.into_iter());
+
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("flag"))));
+    assert_eq!(
+        opts.next(),
+        Err(Error::DoesNotRequireValue(Opt::Long("flag")))
+    );
+    assert_eq!(opts.next(), Ok(Some(Opt::Long("flag2"))));
+    assert_eq!(opts.next(), Ok(None));
+    assert!(opts.opts_ended());
+    assert!(!opts.is_empty());
+
+    let mut args = opts.into_args();
+
+    assert_eq!(args.next(), Some("arg1"));
+    assert_eq!(args.next(), Some("arg2"));
+    assert_eq!(args.next(), None);
 }
 
 struct RepeatingIterator<T, I: Iterator<Item = T>, F: FnMut() -> I>(Option<I>, F);
@@ -413,11 +483,14 @@ fn repeating_iterator() {
     assert_eq!(opts.arg(), None);
     assert_eq!(opts.arg(), None);
     assert_eq!(opts.arg(), None);
+    assert!(opts.is_empty());
     opts.restart();
+    assert!(!opts.is_empty());
     assert_eq!(opts.arg(), Some("fsa"));
     assert_eq!(opts.arg(), Some("N"));
     assert_eq!(opts.arg(), None);
     assert_eq!(opts.arg(), None);
     assert_eq!(opts.arg(), None);
     assert_eq!(opts.arg(), None);
+    assert!(opts.is_empty());
 }

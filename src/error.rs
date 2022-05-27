@@ -2,13 +2,37 @@ use core::fmt::{Display, Formatter};
 
 use crate::{Argument, Opt};
 
-/// A parse error.
+/// An argument parsing error.
+///
+/// [`Error`]s can occur during parsing in calls to
+/// [`Options::next`][crate::Options::next] or
+/// [`Options::value`][crate::Options::value]. Right now, the only
+/// errors that are possible are:
+///
+/// - When an option requires a value, but one is not given; when
+///   [`Options::value`][crate::Options::value] is called and no value
+///   is present.
+///
+/// - When an option does not require a value, but one is given anyway;
+///   [`Options::next`][crate::Options::next] is called when
+///   [`Options::value`][crate::Options::value] and
+///   [`Options::value_opt`][crate::Options::value_opt] have both not
+///   been.
 #[non_exhaustive]
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Error<A: Argument> {
     /// The option requires a value, but one was not supplied.
+    ///
+    /// This error is returned when a call to
+    /// [`Options::value`][crate::Options::value`] does not find any
+    /// value to provide.
     RequiresValue(Opt<A>),
+
     /// The option does not require a value, but one was supplied.
+    ///
+    /// This error is returned when an option is provided a value but
+    /// [`Options::next`][crate::Options::next] is called without the
+    /// value being consumed.
     DoesNotRequireValue(Opt<A>),
 }
 
