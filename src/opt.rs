@@ -2,7 +2,9 @@ use core::fmt::{Display, Formatter};
 
 use crate::Argument;
 
-/// A short or long option. This struct is returned by calls to
+/// A short or long option.
+///
+/// This struct can be returned by calls to
 /// [`Options::next`][crate::Options::next] and represents a short or
 /// long command-line option name (but not value).
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
