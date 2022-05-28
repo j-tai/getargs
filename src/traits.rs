@@ -1,15 +1,22 @@
 use core::fmt::Debug;
 
-/// The argument type. This trait is implemented for types like [`&str`]
-/// and [`&[u8]`], and allows them to be understood by `getargs` enough
-/// to parse them - `getargs` is entirely generic over the type of its
-/// arguments.
+/// The argument trait for types that can be parsed by
+/// [`Options`][crate::Options].
+///
+/// This trait is implemented for types like [`&str`] and [`&[u8]`], and
+/// allows them to be understood by `getargs` enough to parse them -
+/// `getargs` is entirely generic over the type of its arguments.
 ///
 /// Adding `#[inline]` to implementations of this trait can improve
 /// performance by up to 50% in release mode. This is because `Options`
 /// is so blazingly fast (nanoseconds) that the overhead of function
 /// calls becomes quite significant. `rustc` should be able to apply
 /// this optimization automatically, but doesn't for some reason.
+///
+/// This trait should not need to be implemented unless you are using
+/// arguments that cannot be coerced into `&str` or `&[u8]` for whatever
+/// reason. If they can be in any way, you should use an
+/// [`Iterator::map`] instead of implementing [`Argument`].
 pub trait Argument: Copy + Eq + Debug {
     /// The short-flag type. For [`&str`], this is [`char`]. For
     /// [`&[u8]`], this is `u8`.
@@ -42,7 +49,7 @@ pub trait Argument: Copy + Eq + Debug {
     /// Returns the short option cluster if present.
     ///
     /// A "short option cluster" is defined as any [`Self`] such that
-    /// either at least one [`ShortFlag`][Self::ShortFlag] can be
+    /// either at least one [`ShortOpt`][Self::ShortOpt] can be
     /// extracted from it using
     /// [`consume_short_opt`][Self::consume_short_opt], or it can be
     /// converted to a value for a preceding short option using
