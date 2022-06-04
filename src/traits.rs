@@ -3,8 +3,8 @@ use core::fmt::Debug;
 /// The argument trait for types that can be parsed by
 /// [`Options`][crate::Options].
 ///
-/// This trait is implemented for types like [`&str`] and [`&[u8]`], and
-/// allows them to be understood by `getargs` enough to parse them -
+/// This trait is implemented for both [`&str`] and [`&[u8]`][slice],
+/// and allows them to be understood by `getargs` enough to parse them -
 /// `getargs` is entirely generic over the type of its arguments.
 ///
 /// Adding `#[inline]` to implementations of this trait can improve
@@ -17,14 +17,19 @@ use core::fmt::Debug;
 /// arguments that cannot be coerced into `&str` or `&[u8]` for whatever
 /// reason. If they can be in any way, you should use an
 /// [`Iterator::map`] instead of implementing [`Argument`].
+///
+/// Implementing `Argument` requires [`Copy`], [`Eq`], and [`Debug`]
+/// because it simplifies `#[derive]`s on `getargs`' side and codifies
+/// the inexpensive, zero-copy expectations of argument types. This
+/// should be a borrow like `&str`, not an owned struct like `String`.
 pub trait Argument: Copy + Eq + Debug {
     /// The short-flag type. For [`&str`], this is [`char`]. For
-    /// [`&[u8]`], this is `u8`.
+    /// [`&[u8]`][slice], this is `u8`.
     type ShortOpt: Copy + Eq + Debug;
 
     /// Returns `true` if this argument signals that no additional
-    /// options should be parsed. If this method returns `true`, then no
-    /// attempt will be made by [`Options::next`][crate::Options::next]
+    /// options should be parsed. If this method returns `true`, then
+    /// [`Options::next_opt`][crate::Options::next_opt] will not attempt
     /// to parse it as one ([`parse_long_opt`][Self::parse_long_opt] and
     /// [`parse_short_cluster`][Self::parse_short_cluster] will not be
     /// called).
@@ -63,7 +68,7 @@ pub trait Argument: Copy + Eq + Debug {
     ///
     /// This method does not need to guard against `--` long options.
     /// [`parse_long_opt`][Self::parse_long_opt] will be called first by
-    /// [`Options::next`][crate::Options::next].
+    /// [`Options::next_opt`][crate::Options::next_opt].
     fn parse_short_cluster(self) -> Option<Self>;
 
     /// Attempts to consume one short option from a "short option
@@ -163,7 +168,7 @@ impl Argument for &'_ [u8] {
     fn consume_short_opt(self) -> (Self::ShortOpt, Option<Self>) {
         let (byte, rest) = self
             .split_first()
-            .expect("<&[u8] as getargs::Argument>::consume_short_opt called on an empty array");
+            .expect("<&[u8] as getargs::Argument>::consume_short_opt called on an empty slice");
 
         (*byte, Some(rest).filter(|s| !s.is_empty()))
     }

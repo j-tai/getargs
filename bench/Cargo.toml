@@ -11,6 +11,7 @@ publish = false
 [dependencies]
 getargs = { path = '..' }
 getargs4 = { git = 'https://github.com/j-tai/getargs', rev = '0f6366453ee17e5e682d0dc84e581ff621ce0f82', package = 'getargs' }
+getargs5 = { git = 'https://github.com/j-tai/getargs', branch = 'master', package = 'getargs' }
 clap = '=3.1.17'
 pico-args = '=0.4.2'
 # `args` is broken
@@ -18,7 +19,11 @@ pico-args = '=0.4.2'
 getopts = '=0.2.21'
 getopt = '=1.1.3'
 lexopt = '=0.2.0'
+
+# derive-based
+# `aopt` is overengineered and impossible to use
 # aopt = '=0.6.6'
-# structopt = '=0.3.26'
+structopt = '=0.3.26'
+# too pedantic
 # argh = '=0.1.7'
-# gumdrop = '=0.8.1'
+gumdrop = '=0.8.1'
