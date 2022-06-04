@@ -1,3 +1,4 @@
+use crate::ARGS;
 use test::Bencher;
 
 #[derive(Default)]
@@ -19,13 +20,12 @@ pub struct Settings {
 #[bench]
 fn getargs(bencher: &mut Bencher) {
     bencher.iter(|| {
-        use crate::ARGS;
         use getargs::{Opt, Options};
 
         let mut settings = Settings::default();
         let mut opts = Options::new(ARGS.iter().copied());
 
-        while let Some(opt) = opts.next().unwrap() {
+        while let Some(opt) = opts.next_opt().unwrap() {
             match opt {
                 Opt::Short('1') => settings.short_present1 = true,
                 Opt::Short('2') => settings.short_present2 = true,
@@ -50,7 +50,6 @@ fn getargs(bencher: &mut Bencher) {
 #[bench]
 fn getargs4(bencher: &mut Bencher) {
     bencher.iter(|| {
-        use crate::ARGS;
         use getargs4::{Opt, Options};
 
         let mut settings = Settings::default();
@@ -94,7 +93,6 @@ fn getargs4(bencher: &mut Bencher) {
 #[bench]
 fn clap(bencher: &mut Bencher) {
     bencher.iter(|| {
-        use crate::ARGS;
         use clap::{Arg, Command};
         use std::iter::once;
 
@@ -137,7 +135,6 @@ fn clap(bencher: &mut Bencher) {
 
 #[bench]
 fn pico_args(bencher: &mut Bencher) {
-    use crate::ARGS;
     use std::ffi::{OsStr, OsString};
     use std::os::unix::ffi::OsStrExt;
 
@@ -159,12 +156,12 @@ fn pico_args(bencher: &mut Bencher) {
         settings.long_present1 = arguments.contains("--present1");
         settings.long_present2 = arguments.contains("--present2");
         settings.long_present3 = arguments.contains("--present3");
-        settings.short_value1 = arguments.opt_value_from_str("-4").unwrap();
-        settings.short_value2 = arguments.opt_value_from_str("-5").unwrap();
-        settings.short_value3 = arguments.opt_value_from_str("-6").unwrap();
-        settings.long_value1 = arguments.opt_value_from_str("--val1").unwrap();
-        settings.long_value2 = arguments.opt_value_from_str("--val2").unwrap();
-        settings.long_value3 = arguments.opt_value_from_str("--val3").unwrap();
+        settings.short_value1 = arguments.value_from_str("-4").ok();
+        settings.short_value2 = arguments.value_from_str("-5").ok();
+        settings.short_value3 = arguments.value_from_str("-6").ok();
+        settings.long_value1 = arguments.value_from_str("--val1").ok();
+        settings.long_value2 = arguments.value_from_str("--val2").ok();
+        settings.long_value3 = arguments.value_from_str("--val3").ok();
 
         settings
     })
@@ -173,7 +170,6 @@ fn pico_args(bencher: &mut Bencher) {
 #[bench]
 fn getopts(bencher: &mut Bencher) {
     bencher.iter(|| {
-        use crate::ARGS;
         use getopts::{HasArg, Occur, Options};
 
         let mut settings = Settings::default();
@@ -249,7 +245,6 @@ fn getopt(bencher: &mut Bencher) {
 
 #[bench]
 fn lexopt(bencher: &mut Bencher) {
-    use crate::ARGS;
     use core::str::FromStr;
     use std::ffi::OsString;
 
@@ -300,4 +295,76 @@ fn lexopt(bencher: &mut Bencher) {
 
         settings
     })
+}
+
+#[bench]
+fn structopt(bencher: &mut Bencher) {
+    use structopt::StructOpt;
+
+    #[allow(unused)]
+    #[derive(StructOpt)]
+    #[structopt(name = "bench")]
+    struct Settings {
+        #[structopt(short = "1")]
+        pub short_present1: bool,
+        #[structopt(short = "2")]
+        pub short_present2: bool,
+        #[structopt(short = "3")]
+        pub short_present3: bool,
+        #[structopt(long = "present1")]
+        pub long_present1: bool,
+        #[structopt(long = "present2")]
+        pub long_present2: bool,
+        #[structopt(long = "present3")]
+        pub long_present3: bool,
+        #[structopt(short = "4")]
+        pub short_value1: Option<String>,
+        #[structopt(short = "5")]
+        pub short_value2: Option<String>,
+        #[structopt(short = "6")]
+        pub short_value3: Option<String>,
+        #[structopt(long = "val1")]
+        pub long_value1: Option<String>,
+        #[structopt(long = "val2")]
+        pub long_value2: Option<String>,
+        #[structopt(long = "val3")]
+        pub long_value3: Option<String>,
+    }
+
+    bencher.iter(|| Settings::from_iter(ARGS.iter()))
+}
+
+#[bench]
+fn gumdrop(bencher: &mut Bencher) {
+    use gumdrop::{Options, ParsingStyle};
+
+    #[derive(Options)]
+    struct Settings {
+        #[options(no_long, short = "1")]
+        pub short_present1: bool,
+        #[options(no_long, short = "2")]
+        pub short_present2: bool,
+        #[options(no_long, short = "3")]
+        pub short_present3: bool,
+        #[options(no_short, long = "present1")]
+        pub long_present1: bool,
+        #[options(no_short, long = "present2")]
+        pub long_present2: bool,
+        #[options(no_short, long = "present3")]
+        pub long_present3: bool,
+        #[options(no_long, short = "4")]
+        pub short_value1: Option<String>,
+        #[options(no_long, short = "5")]
+        pub short_value2: Option<String>,
+        #[options(no_long, short = "6")]
+        pub short_value3: Option<String>,
+        #[options(no_short, long = "val1")]
+        pub long_value1: Option<String>,
+        #[options(no_short, long = "val2")]
+        pub long_value2: Option<String>,
+        #[options(no_short, long = "val3")]
+        pub long_value3: Option<String>,
+    }
+
+    bencher.iter(|| Settings::parse_args(&ARGS, ParsingStyle::AllOptions))
 }

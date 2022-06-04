@@ -21,6 +21,7 @@ you do with it.
 * Required implicit values `-i VALUE` and `--implicit VALUE`
 * Required or optional explicit values `-eVALUE` and `--explicit=VALUE`
 * Positional arguments and `--`
+* Parse options at the beginning of the argument list, or anywhere
 
 ## Benefits
 
@@ -33,74 +34,26 @@ you do with it.
 * `#![no_std]`-compatible
 * Compatible with `&str` and `&[u8]`
 
+## Performance
+
+`getargs` has had a lot of attention put into profiling and
+optimization, and on a modern machine it takes under 0.2μs to parse a
+short array of 12 arguments.
+
+In our testing, `getargs` is faster than every other argument parsing
+library on crates.io. Its closest competitor is `gumdrop`, which is only
+~30% slower in the worst case, and its second-closest competitor is
+`getopt`, which takes three times as long. Other libraries degrade
+quickly; `clap` takes 45x longer. (This is not an entirely fair
+comparison though, as `clap` is not just an argument-parsing library,
+but an entire command-line application framework. It is perhaps
+overqualified for simple tasks.)
+
 ## Example
 
-```rust
-use std::process;
-use getargs::{Opt, Options};
-use std::str::FromStr;
-use std::num::ParseIntError;
-
-#[derive(Clone, Eq, PartialEq, Debug, thiserror::Error)]
-enum Error<'str> {
-    #[error("{0:?}")]
-    Getargs(getargs::Error<&'str str>),
-    #[error("parsing version: {0}")]
-    VersionParseError(ParseIntError),
-    #[error("unknown option: {0}")]
-    UnknownOption(Opt<&'str str>)
-}
-
-impl<'arg> From<getargs::Error<&'arg str>> for Error<'arg> {
-    fn from(error: getargs::Error<&'arg str>) -> Self {
-        Self::Getargs(error)
-    }
-}
-
-// You are recommended to create a struct to hold your arguments
-#[derive(Default, Debug)]
-struct MyArgsStruct<'str> {
-    attack_mode: bool,
-    em_dashes: bool,
-    execute: &'str str,
-    set_version: u32,
-    positional_args: Vec<&'str str>,
-}
-
-fn parse_args<'a, 'str, I: Iterator<Item = &'str str>>(opts: &'a mut Options<&'str str, I>) -> Result<MyArgsStruct<'str>, Error<'str>> {
-    let mut res = MyArgsStruct::default();
-    while let Some(opt) = opts.next()? {
-        match opt {
-            // -a or --attack
-            Opt::Short('a') | Opt::Long("attack") => res.attack_mode = true,
-            // Unicode short options are supported
-            Opt::Short('\u{2014}') => res.em_dashes = true,
-            // -e EXPRESSION, or -eEXPRESSION, or
-            // --execute EXPRESSION, or --execute=EXPRESSION
-            Opt::Short('e') | Opt::Long("execute") => res.execute = opts.value()?,
-            // Automatically parses the value as a u32
-            Opt::Short('V') => res.set_version = u32::from_str(opts.value()?).map_err(Error::VersionParseError)?,
-            // An unknown option was passed
-            opt => return Err(Error::UnknownOption(opt)),
-        }
-    }
-    res.positional_args = opts.args().collect();
-    Ok(res)
-}
-
-fn main() {
-    let args: Vec<_> = std::env::args().skip(1).collect();
-    let mut opts = Options::new(args.iter().map(String::as_str));
-    let options = match parse_args(&mut opts) {
-        Ok(o) => o,
-        Err(e) => {
-            eprintln!("error: {}", e);
-            process::exit(1);
-        }
-    };
-    println!("{:#?}", options);
-}
-```
+For examples, see [the `examples` directory][./examples/] for small
+programs that you can compile and run yourself to see how `getargs`
+works.
 
 ## License
 

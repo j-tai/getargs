@@ -57,7 +57,7 @@ fn getargs5<'str, I: Iterator<Item = &'str str>>(iter: I) -> Settings<&'str str>
     let mut settings = Settings::default();
     let mut opts = Options::new(iter);
 
-    while let Some(opt) = opts.next().unwrap() {
+    while let Some(opt) = opts.next_opt().unwrap() {
         match opt {
             Opt::Short('1') => settings.short_present1 = true,
             Opt::Short('2') => settings.short_present2 = true,
@@ -85,7 +85,7 @@ fn getargs5b<'arg, I: Iterator<Item = &'arg [u8]>>(iter: I) -> Settings<&'arg [u
     let mut settings = Settings::default();
     let mut opts = Options::new(iter);
 
-    while let Some(opt) = opts.next().unwrap() {
+    while let Some(opt) = opts.next_opt().unwrap() {
         match opt {
             Opt::Short(b'1') => settings.short_present1 = true,
             Opt::Short(b'2') => settings.short_present2 = true,

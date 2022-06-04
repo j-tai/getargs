@@ -5,7 +5,8 @@ use crate::{Argument, Opt};
 /// An argument parsing error.
 ///
 /// [`Error`]s can occur during parsing in calls to
-/// [`Options::next`][crate::Options::next] or
+/// [`Options::next_opt`][crate::Options::next_opt],
+/// [`Options::next_arg`][crate::Options::next_arg], or
 /// [`Options::value`][crate::Options::value]. Right now, the only
 /// errors that are possible are:
 ///
@@ -14,7 +15,8 @@ use crate::{Argument, Opt};
 ///   is present.
 ///
 /// - When an option does not require a value, but one is given anyway;
-///   [`Options::next`][crate::Options::next] is called when
+///   [`Options::next_opt`][crate::Options::next_opt] or
+///   [`Options::next_arg`][crate::Options::next_arg] is called when
 ///   [`Options::value`][crate::Options::value] and
 ///   [`Options::value_opt`][crate::Options::value_opt] have both not
 ///   been.
@@ -31,8 +33,9 @@ pub enum Error<A: Argument> {
     /// The option does not require a value, but one was supplied.
     ///
     /// This error is returned when an option is provided a value but
-    /// [`Options::next`][crate::Options::next] is called without the
-    /// value being consumed.
+    /// [`Options::next_opt`][crate::Options::next_opt] or
+    /// [`Options::next_arg`][crate::Options::next_arg] is called
+    /// without the value being consumed.
     DoesNotRequireValue(Opt<A>),
 }
 
