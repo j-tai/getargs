@@ -15,7 +15,7 @@ fn main() {
 
     let mut opts = Options::new(args);
 
-    while let Some(opt) = opts.next().expect("calling Options::next") {
+    while let Some(opt) = opts.next_opt().expect("calling Options::next") {
         match opt {
             Opt::Short('v') | Opt::Long("value") => eprintln!("'{}': {:?}", opt, opts.value()),
             Opt::Short('o') | Opt::Long("opt") => eprintln!("'{}': {:?}", opt, opts.value_opt()),
@@ -23,7 +23,7 @@ fn main() {
         }
     }
 
-    for positional in opts.args() {
+    for positional in opts.positionals() {
         eprintln!("positional argument: {}", positional);
     }
 }
