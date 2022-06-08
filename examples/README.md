@@ -9,6 +9,6 @@
    on Linux and Unix (but not on Windows).
 
 3. [`anywhere_manual.rs`](./anywhere_manual.rs) and
-   [`anywhere_helper.rs`](./anywhere_helper.rs): shows how to implement
+   [`anywhere_helper.rs`](./anywhere): shows how to implement
    support for passing options after and in-between positional arguments
    (basically, anywhere).

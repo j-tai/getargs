@@ -10,7 +10,7 @@ fn main() {
 
     let mut opts = Options::new(args.iter().map(String::as_str));
 
-    while let Some(opt) = opts.next().expect("argument parsing error") {
+    while let Some(opt) = opts.next_opt().expect("argument parsing error") {
         match opt {
             Opt::Short('h') | Opt::Long("help") => {
                 eprintln!(
@@ -40,7 +40,7 @@ optional value.
         }
     }
 
-    for arg in opts.args() {
+    for arg in opts.positionals() {
         eprintln!("positional: {:?}", arg)
     }
 }
