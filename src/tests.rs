@@ -242,7 +242,75 @@ fn subcommand() {
     assert!(opts.is_empty());
 }
 
-// Things you shouldn't need too often
+#[test]
+fn options_anywhere() {
+    let args = ["-a", "1", "--foo", "2", "3", "-bc", "4"];
+    let mut opts = Options::new(args.into_iter());
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Short('a'))));
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Positional("1"))));
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Long("foo"))));
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Positional("2"))));
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Positional("3"))));
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Short('b'))));
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Short('c'))));
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Positional("4"))));
+    assert_eq!(opts.next_arg(), Ok(None));
+    assert!(opts.is_empty());
+}
+
+#[test]
+fn options_anywhere_with_values() {
+    let args = ["-a", "1", "--foo", "2", "3", "-bc", "4"];
+    let mut opts = Options::new(args.into_iter());
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Short('a'))));
+    assert_eq!(opts.value(), Ok("1"));
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Long("foo"))));
+    assert_eq!(opts.value(), Ok("2"));
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Positional("3"))));
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Short('b'))));
+    assert_eq!(opts.value(), Ok("c"));
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Positional("4"))));
+    assert_eq!(opts.next_arg(), Ok(None));
+    assert!(opts.is_empty());
+}
+
+#[test]
+fn options_anywhere_with_end() {
+    let args = ["-a", "1", "--foo", "2", "--", "-bc", "--positional"];
+    let mut opts = Options::new(args.into_iter());
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Short('a'))));
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Positional("1"))));
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Long("foo"))));
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Positional("2"))));
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Positional("-bc"))));
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Positional("--positional"))));
+    assert_eq!(opts.next_arg(), Ok(None));
+    assert!(opts.is_empty());
+}
+
+#[test]
+fn next_opt_empty() {
+    let mut opts = Options::new(core::iter::empty::<&str>());
+    assert!(!opts.is_empty());
+    assert_eq!(opts.next_opt(), Ok(None));
+    assert!(opts.is_empty());
+}
+
+#[test]
+fn next_arg_empty() {
+    let mut opts = Options::new(core::iter::empty::<&str>());
+    assert!(!opts.is_empty());
+    assert_eq!(opts.next_arg(), Ok(None));
+    assert!(opts.is_empty());
+}
+
+#[test]
+fn next_positional_empty() {
+    let mut opts = Options::new(core::iter::empty::<&str>());
+    assert!(!opts.is_empty());
+    assert_eq!(opts.next_positional(), None);
+    assert!(opts.is_empty());
+}
 
 #[test]
 fn keep_retrieving_options() {
@@ -270,20 +338,22 @@ fn keep_retrieving_options_2() {
     assert!(opts.is_empty());
 }
 
-// Things you definitely shouldn't do
-
 #[test]
-#[should_panic]
-fn keep_taking_values() {
-    let args = ["-a", "ay", "ay2", "bar"];
+fn keep_retrieving_args() {
+    let args = ["-a", "foo"];
     let mut opts = Options::new(args.into_iter());
-    let _ = opts.next_opt(); // -a
-    let _ = opts.value(); // ay
-    let _ = opts.value(); // panic: cannot get 2 values
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Short('a'))));
+    assert_eq!(opts.next_arg(), Ok(Some(Arg::Positional("foo"))));
+    assert_eq!(opts.next_arg(), Ok(None));
+    assert!(opts.is_empty());
+    assert_eq!(opts.next_arg(), Ok(None));
+    assert_eq!(opts.next_arg(), Ok(None));
+    assert_eq!(opts.next_arg(), Ok(None));
+    assert!(opts.is_empty());
 }
 
 #[test]
-fn keep_taking_args() {
+fn keep_retrieving_positional() {
     let args = ["-a", "ay"];
     let mut opts = Options::new(args.into_iter());
     assert_eq!(opts.next_positional(), Some("-a"));
@@ -293,6 +363,16 @@ fn keep_taking_args() {
     assert_eq!(opts.next_positional(), None);
     assert_eq!(opts.next_positional(), None);
     assert!(opts.is_empty());
+}
+
+#[test]
+#[should_panic]
+fn keep_taking_values() {
+    let args = ["-a", "ay", "ay2", "bar"];
+    let mut opts = Options::new(args.into_iter());
+    let _ = opts.next_opt(); // -a
+    let _ = opts.value(); // ay
+    let _ = opts.value(); // panic: cannot get 2 values
 }
 
 #[test]
@@ -398,7 +478,7 @@ fn does_not_require_value_continue() {
     assert_eq!(opts.next_opt(), Ok(Some(Opt::Long("flag"))));
     assert_eq!(
         opts.next_opt(),
-        Err(Error::DoesNotRequireValue(Opt::Long("flag")))
+        Err(Error::DoesNotRequireValue(Opt::Long("flag"))),
     );
     assert_eq!(opts.next_opt(), Ok(Some(Opt::Long("flag2"))));
     assert_eq!(opts.next_opt(), Ok(None));
