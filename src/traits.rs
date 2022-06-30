@@ -44,10 +44,17 @@ pub trait Argument: Copy + Eq + Debug {
     /// result of the parsing operation, with the leading `--` stripped.
     ///
     /// A long option is defined as an argument that follows the pattern
-    /// `--flag` or `--flag=VALUE`, where `VALUE` may be empty. For
-    /// example, `"--flag"` would parse as `Some(("flag", None))` and
-    /// `"--flag=value"` would parse as `Some(("flag", Some("value")))`.
-    /// `"--flag="` would parse as `Some(("flag", Some("")))`.
+    /// `--flag` or `--flag=VALUE`, where `VALUE` may be empty.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use getargs::Argument;
+    /// assert_eq!("--flag".parse_long_opt(), Some(("flag", None)));
+    /// assert_eq!("--flag=value".parse_long_opt(), Some(("flag", Some("value"))));
+    /// assert_eq!("--flag=".parse_long_opt(), Some(("flag", Some(""))));
+    /// assert_eq!("-a".parse_long_opt(), None);
+    /// ```
     fn parse_long_opt(self) -> Option<(Self, Option<Self>)>;
 
     /// Attempts to parse this argument as a "short option cluster".
@@ -69,6 +76,15 @@ pub trait Argument: Copy + Eq + Debug {
     /// This method does not need to guard against `--` long options.
     /// [`parse_long_opt`][Self::parse_long_opt] will be called first by
     /// [`Options::next_opt`][crate::Options::next_opt].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use getargs::Argument;
+    /// assert_eq!("-abc".parse_short_cluster(), Some("abc"));
+    /// assert_eq!("-a".parse_short_cluster(), Some("a"));
+    /// assert_eq!("-".parse_short_cluster(), None);
+    /// ```
     fn parse_short_cluster(self) -> Option<Self>;
 
     /// Attempts to consume one short option from a "short option
@@ -82,6 +98,14 @@ pub trait Argument: Copy + Eq + Debug {
     /// [`parse_short_cluster`][Self::parse_short_cluster]; namely, its
     /// validity for [`consume_short_opt`][Self::consume_short_opt] or
     /// [`consume_short_val`][Self::consume_short_val].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use getargs::Argument;
+    /// assert_eq!("abc".consume_short_opt(), ('a', Some("bc")));
+    /// assert_eq!("a".consume_short_opt(), ('a', None));
+    /// ```
     fn consume_short_opt(self) -> (Self::ShortOpt, Option<Self>);
 
     /// Consumes the value of a short option from a "short

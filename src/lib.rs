@@ -772,6 +772,24 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
     /// # Panics
     ///
     /// Panics if an option is currently being parsed.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use getargs::{Opt, Options};
+    /// #
+    /// let args = ["--flag", "one", "two"];
+    /// let mut opts = Options::new(args.into_iter());
+    ///
+    /// assert_eq!(opts.next_opt(), Ok(Some(Opt::Long("flag"))));
+    /// assert_eq!(opts.next_opt(), Ok(None));
+    ///
+    /// let mut iter = opts.into_positionals();
+    ///
+    /// assert_eq!(iter.next(), Some("one"));
+    /// assert_eq!(iter.next(), Some("two"));
+    /// assert_eq!(iter.next(), None);
+    /// ```
     pub fn into_positionals(self) -> IntoPositionals<A, I> {
         match self.state {
             State::Start { .. } | State::EndOfOption(_) | State::End { .. } => {
