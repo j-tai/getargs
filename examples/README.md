@@ -18,3 +18,4 @@ play with these to learn more about how `getargs` works.
    on Unix (but not on Windows)
 5. [`anywhere.rs`](./anywhere.rs): shows how to support passing options after
    and in-between positional arguments, rather than just at the beginning
+6. [`os_str.rs`](./os_str.rs): shows how to parse non-UTF-8 arguments on Unix
