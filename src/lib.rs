@@ -49,6 +49,12 @@
 //! argument-parsing library, but an entire command-line application
 //! framework. It is perhaps overqualified for simple tasks.)
 //!
+//! ## Quickstart
+//!
+//! Check out the [examples].
+//!
+//! [examples]: https://github.com/j-tai/getargs/tree/master/examples
+//!
 //! ## Overview
 //!
 //! - [`Options`] is the main export of the library, and handles
