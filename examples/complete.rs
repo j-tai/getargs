@@ -39,6 +39,7 @@ enum Subcommand<'a> {
         args: Vec<&'a str>,
     },
     Delete {
+        backup: Option<&'a str>,
         args: Vec<&'a str>,
     },
 }
@@ -93,8 +94,16 @@ fn parse_create_args<'a, I: Iterator<Item = &'a str>>(
 fn parse_delete_args<'a, I: Iterator<Item = &'a str>>(
     opts: &mut Options<&'a str, I>,
 ) -> Result<Subcommand<'a>, UsageError<'a>> {
+    let mut backup = None;
+    while let Some(opt) = opts.next_opt()? {
+        match opt {
+            Opt::Short('b') | Opt::Long("backup") => backup = Some(opts.value_opt().unwrap_or(".bak")),
+            _ => return Err(UsageError::UnknownOption(opt)),
+        }
+    }
+
     let args = opts.positionals().collect();
-    Ok(Subcommand::Delete { args })
+    Ok(Subcommand::Delete { backup, args })
 }
 
 fn main() {
@@ -114,7 +123,7 @@ Options:
 
 SUBCOMMAND is one of:
     create [-o OUTPUT] [FILE ...]
-    delete [FILE ...]"
+    delete [-b[SUFFIX]] [FILE ...]"
             );
         }
         Err(e) => {
