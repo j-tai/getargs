@@ -26,5 +26,5 @@ fn main() {
 
 #[cfg(not(unix))]
 fn main() {
-    eprintln("Only supported on Unix because UTF-16 is hard, sorry :(");
+    eprintln!("Only supported on Unix because UTF-16 is hard, sorry :(");
 }
