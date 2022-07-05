@@ -97,7 +97,9 @@ fn parse_delete_args<'a, I: Iterator<Item = &'a str>>(
     let mut backup = None;
     while let Some(opt) = opts.next_opt()? {
         match opt {
-            Opt::Short('b') | Opt::Long("backup") => backup = Some(opts.value_opt().unwrap_or(".bak")),
+            Opt::Short('b') | Opt::Long("backup") => {
+                backup = Some(opts.value_opt().unwrap_or(".bak"))
+            }
             _ => return Err(UsageError::UnknownOption(opt)),
         }
     }
