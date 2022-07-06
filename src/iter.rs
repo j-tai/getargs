@@ -27,7 +27,7 @@ impl<'opts, A: Argument, I: Iterator<Item = A>> Iterator for Positionals<'opts, 
 ///
 /// For more information, see
 /// [`Options::into_positionals`][crate::Options::into_positionals].
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IntoPositionals<A: Argument, I: Iterator<Item = A>> {
     positional: Option<A>,
     iter: I,

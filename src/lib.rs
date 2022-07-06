@@ -392,7 +392,7 @@ pub use traits::Argument;
 /// # assert!(opts.opts_ended());
 /// assert_eq!(opts.next_arg(), Ok(None));
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Options<A: Argument, I: Iterator<Item = A>> {
     /// Iterator over the arguments.
     iter: I,
