@@ -3,8 +3,8 @@
 The following example shows what your app's code will generally look like. You
 can use it as a reference, or copy it into your project.
 
-1. [`complete.rs`](./complete.rs): a complete example that all argument
-   information into a struct, including subcommands, subcommand-specific
+1. [`complete.rs`](./complete.rs): a complete example that parses all argument
+   information into a struct. Includes subcommands, subcommand-specific
    options, and repeated options.
 
 The following examples show the features of `getargs` in more detail. You can
