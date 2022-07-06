@@ -250,6 +250,8 @@ mod opt;
 mod tests;
 mod traits;
 
+use core::iter::Peekable;
+
 pub use arg::Arg;
 pub use error::{Error, Result};
 pub use iter::{IntoPositionals, Positionals};
@@ -395,7 +397,7 @@ pub use traits::Argument;
 #[derive(Debug)]
 pub struct Options<A: Argument, I: Iterator<Item = A>> {
     /// Iterator over the arguments.
-    iter: I,
+    iter: Peekable<I>,
     /// State information.
     state: State<A>,
 }
@@ -406,9 +408,6 @@ enum State<A: Argument> {
     /// previous option. We may get a positional argument or an
     /// option.
     Start { ended_opts: bool },
-    /// We found a positional option and want to preserve it, since it
-    /// will no longer be returned from the iterator.
-    Positional(A),
     /// We have just finished parsing an option, be it short or long,
     /// and we don't know whether the next argument is considered a
     /// value for the option or a positional argument. From here, we
@@ -436,7 +435,7 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
     /// iterator yields.
     pub fn new(iter: I) -> Options<A, I> {
         Options {
-            iter,
+            iter: iter.peekable(),
             state: State::Start { ended_opts: false },
         }
     }
@@ -462,7 +461,7 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
     pub fn next_opt(&'_ mut self) -> Result<A, Option<Opt<A>>> {
         match self.state {
             State::Start { .. } | State::EndOfOption(_) => {
-                let next = self.iter.next();
+                let next = self.iter.peek().copied();
 
                 if next.is_none() {
                     self.state = State::End { ended_opts: false };
@@ -473,6 +472,7 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
 
                 if arg.ends_opts() {
                     self.state = State::Start { ended_opts: true };
+                    self.iter.next();
                     Ok(None)
                 } else if let Some((name, value)) = arg.parse_long_opt() {
                     let opt = Opt::Long(name);
@@ -483,6 +483,7 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
                         self.state = State::EndOfOption(opt);
                     }
 
+                    self.iter.next();
                     Ok(Some(opt))
                 } else if let Some(cluster) = arg.parse_short_cluster() {
                     let (opt, rest) = cluster.consume_short_opt();
@@ -494,9 +495,11 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
                         self.state = State::EndOfOption(opt);
                     }
 
+                    self.iter.next();
                     Ok(Some(opt))
                 } else {
-                    self.state = State::Positional(arg);
+                    self.state = State::Start { ended_opts: false };
+                    // don't advance the iterator
                     Ok(None)
                 }
             }
@@ -519,7 +522,7 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
                 Err(Error::DoesNotRequireValue(opt))
             }
 
-            State::Positional(_) | State::End { .. } => Ok(None),
+            State::End { .. } => Ok(None),
         }
     }
 
@@ -602,7 +605,7 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
     /// ```
     pub fn value(&'_ mut self) -> Result<A, A> {
         match self.state {
-            State::Start { .. } | State::Positional(_) | State::End { .. } => {
+            State::Start { .. } | State::End { .. } => {
                 panic!("called Options::value() with no previous option")
             }
 
@@ -672,7 +675,7 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
     /// ```
     pub fn value_opt(&'_ mut self) -> Option<A> {
         match self.state {
-            State::Start { .. } | State::Positional(_) | State::End { .. } => {
+            State::Start { .. } | State::End { .. } => {
                 panic!("called Options::value_opt() with no previous option")
             }
 
@@ -727,11 +730,6 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
                 self.state = State::End { ended_opts };
                 None
             }),
-
-            State::Positional(arg) => {
-                self.state = State::Start { ended_opts: false };
-                Some(arg)
-            }
 
             State::End { .. } => None,
 
@@ -799,9 +797,8 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
     pub fn into_positionals(self) -> IntoPositionals<A, I> {
         match self.state {
             State::Start { .. } | State::EndOfOption(_) | State::End { .. } => {
-                IntoPositionals::new(None, self.iter)
+                IntoPositionals::new(self.iter)
             }
-            State::Positional(positional) => IntoPositionals::new(Some(positional), self.iter),
             _ => {
                 panic!("called Options::into_positionals() while option parsing hasn't finished")
             }
