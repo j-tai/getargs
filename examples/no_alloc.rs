@@ -5,13 +5,10 @@
 //! Additionally, all strings and errors are annotated with the correct lifetimes, so that the
 //! lifetime of the iterator itself does not matter so much anymore.
 
-use getargs::{Opt, Options};
+use getargs::{Argument, Opt, Options};
 
 fn main() {
-    let args = argv::iter().skip(1).map(|os| {
-        os.to_str()
-            .expect("argument couldn't be converted to UTF-8")
-    });
+    let args = argv::iter().skip(1);
 
     let mut opts = Options::new(args);
 
@@ -24,6 +21,6 @@ fn main() {
     }
 
     for positional in opts.positionals() {
-        eprintln!("positional argument: {}", positional);
+        eprintln!("positional argument: {}", Argument::display(positional));
     }
 }

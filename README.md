@@ -22,17 +22,18 @@ you do with it.
 * Required or optional explicit values `-eVALUE` and `--explicit=VALUE`
 * Positional arguments and `--`
 * Parse options at the beginning of the argument list, or anywhere
+* Optionally parse negative numbers as positional arguments
 
 ## Benefits
 
 * Zero cost
 * Zero copy
-* Zero unsafe code
+* Zero unsafe code except for `&OsStr`
 * Zero dependencies
 * Zero allocation
 * Simple to use yet versatile
-* `#![no_std]`-compatible
-* Compatible with `&str` and `&[u8]`
+* `#![no_std]`-compatible except for `&OsStr`
+* Compatible with `&str`, `&[u8]` and `&OsStr`
 
 ## Performance
 

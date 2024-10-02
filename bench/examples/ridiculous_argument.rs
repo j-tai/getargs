@@ -1,5 +1,3 @@
-#![feature(bench_black_box)]
-
 use std::hint::black_box;
 use getargs::Argument;
 
@@ -20,27 +18,27 @@ fn dash_ends_opts() -> bool {
 
 #[inline(never)]
 fn long_flag() -> Option<(&'static str, Option<&'static str>)> {
-    black_box("--long-flag-with-no-value").parse_long_opt()
+    black_box("--long-flag-with-no-value").parse_long_opt().unwrap()
 }
 
 #[inline(never)]
 fn long_flag_blank_value() -> Option<(&'static str, Option<&'static str>)> {
-    black_box("--long-flag-with-blank-value=").parse_long_opt()
+    black_box("--long-flag-with-blank-value=").parse_long_opt().unwrap()
 }
 
 #[inline(never)]
 fn long_flag_value() -> Option<(&'static str, Option<&'static str>)> {
-    black_box("--long-flag-with-long-value=this-is-a-pretty-longish-value").parse_long_opt()
+    black_box("--long-flag-with-long-value=this-is-a-pretty-longish-value").parse_long_opt().unwrap()
 }
 
 #[inline(never)]
 fn short_flag_cluster() -> Option<&'static str> {
-    black_box("-verylongshortflagcluster").parse_short_cluster()
+    black_box("-verylongshortflagcluster").parse_short_cluster(true)
 }
 
 #[inline(never)]
 fn short_flag_cluster_opt() -> (char, Option<&'static str>) {
-    black_box("verylongshortflagcluster").consume_short_opt()
+    black_box("verylongshortflagcluster").consume_short_opt().unwrap()
 }
 
 #[inline(never)]
@@ -64,28 +62,28 @@ fn bytes_dash_ends_opts() -> bool {
 }
 
 #[inline(never)]
-fn bytes_long_flag() -> Option<(&'static [u8], Option<&'static [u8]>)> {
-    black_box(b"--long-flag-with-no-value").parse_long_opt()
+fn bytes_long_flag() -> Option<(&'static str, Option<&'static [u8]>)> {
+    black_box(b"--long-flag-with-no-value").parse_long_opt().unwrap()
 }
 
 #[inline(never)]
-fn bytes_long_flag_blank_value() -> Option<(&'static [u8], Option<&'static [u8]>)> {
-    black_box(b"--long-flag-with-blank-value=").parse_long_opt()
+fn bytes_long_flag_blank_value() -> Option<(&'static str, Option<&'static [u8]>)> {
+    black_box(b"--long-flag-with-blank-value=").parse_long_opt().unwrap()
 }
 
 #[inline(never)]
-fn bytes_long_flag_value() -> Option<(&'static [u8], Option<&'static [u8]>)> {
-    black_box(b"--long-flag-with-long-value=this-is-a-pretty-longish-value").parse_long_opt()
+fn bytes_long_flag_value() -> Option<(&'static str, Option<&'static [u8]>)> {
+    black_box(b"--long-flag-with-long-value=this-is-a-pretty-longish-value").parse_long_opt().unwrap()
 }
 
 #[inline(never)]
 fn bytes_short_flag_cluster() -> Option<&'static [u8]> {
-    black_box(b"-verylongshortflagcluster").parse_short_cluster()
+    black_box(b"-verylongshortflagcluster").parse_short_cluster(true)
 }
 
 #[inline(never)]
-fn bytes_short_flag_cluster_opt() -> (u8, Option<&'static [u8]>) {
-    black_box(b"verylongshortflagcluster").consume_short_opt()
+fn bytes_short_flag_cluster_opt() -> (char, Option<&'static [u8]>) {
+    black_box(b"verylongshortflagcluster").consume_short_opt().unwrap()
 }
 
 #[inline(never)]

@@ -8,19 +8,19 @@ use core::fmt::{Debug, Display, Formatter};
 /// short or long command-line option name (but not value) like [`Opt`],
 /// or a positional argument.
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub enum Arg<A: Argument> {
+pub enum Arg<'str, A: Argument> {
     /// A short option, like `-f`. Does not include the leading `-`.
-    Short(A::ShortOpt),
+    Short(char),
     /// A long option, like `--file`. Does not include the leading `--`.
-    Long(A),
+    Long(&'str str),
     /// A positional argument, like `foo.txt`.
     Positional(A),
 }
 
-impl<A: Argument> Arg<A> {
+impl<'str, A: Argument> Arg<'str, A> {
     /// Retrieves an equivalent [`Opt`] represented by this [`Arg`], if
     /// it is [`Arg::Short`] or [`Arg::Long`], otherwise `None`.
-    pub fn opt(self) -> Option<Opt<A>> {
+    pub fn opt(self) -> Option<Opt<'str>> {
         match self {
             Self::Short(short) => Some(Opt::Short(short)),
             Self::Long(long) => Some(Opt::Long(long)),
@@ -38,8 +38,8 @@ impl<A: Argument> Arg<A> {
     }
 }
 
-impl<A: Argument> From<Opt<A>> for Arg<A> {
-    fn from(opt: Opt<A>) -> Self {
+impl<'str, A: Argument> From<Opt<'str>> for Arg<'str, A> {
+    fn from(opt: Opt<'str>) -> Self {
         match opt {
             Opt::Short(short) => Self::Short(short),
             Opt::Long(long) => Self::Long(long),
@@ -47,18 +47,18 @@ impl<A: Argument> From<Opt<A>> for Arg<A> {
     }
 }
 
-impl<A: Argument> From<A> for Arg<A> {
+impl<A: Argument> From<A> for Arg<'_, A> {
     fn from(arg: A) -> Self {
         Self::Positional(arg)
     }
 }
 
-impl<S: Display, A: Argument<ShortOpt = S> + Display> Display for Arg<A> {
+impl<A: Argument> Display for Arg<'_, A> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::Short(short) => write!(f, "-{}", short),
             Self::Long(long) => write!(f, "--{}", long),
-            Self::Positional(arg) => Display::fmt(arg, f),
+            Self::Positional(arg) => arg.display().fmt(f),
         }
     }
 }

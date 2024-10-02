@@ -4,17 +4,17 @@ use crate::{Argument, Options};
 ///
 /// For more information, see [`Options::positionals`].
 #[derive(Debug)]
-pub struct Positionals<'opts, A: Argument, I: Iterator<Item = A>> {
-    inner: &'opts mut Options<A, I>,
+pub struct Positionals<'opts, 'opt, A: Argument, I: Iterator<Item = A>> {
+    inner: &'opts mut Options<'opt, A, I>,
 }
 
-impl<'opts, A: Argument, I: Iterator<Item = A>> Positionals<'opts, A, I> {
-    pub(crate) fn new(inner: &'opts mut Options<A, I>) -> Self {
+impl<'opts, 'opt, A: Argument, I: Iterator<Item = A>> Positionals<'opts, 'opt, A, I> {
+    pub(crate) fn new(inner: &'opts mut Options<'opt, A, I>) -> Self {
         Self { inner }
     }
 }
 
-impl<'opts, A: Argument, I: Iterator<Item = A>> Iterator for Positionals<'opts, A, I> {
+impl<'opts, 'opt, A: Argument, I: Iterator<Item = A>> Iterator for Positionals<'opts, 'opt, A, I> {
     type Item = A;
 
     fn next(&mut self) -> Option<Self::Item> {

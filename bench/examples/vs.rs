@@ -1,7 +1,6 @@
-#![feature(bench_black_box)]
-
 use bench::{ARGS, ARGS_BYTES};
 use getargs::Argument;
+use std::ffi::OsStr;
 use std::hint::black_box;
 use std::time::Instant;
 
@@ -87,18 +86,46 @@ fn getargs5b<'arg, I: Iterator<Item = &'arg [u8]>>(iter: I) -> Settings<&'arg [u
 
     while let Some(opt) = opts.next_opt().unwrap() {
         match opt {
-            Opt::Short(b'1') => settings.short_present1 = true,
-            Opt::Short(b'2') => settings.short_present2 = true,
-            Opt::Short(b'3') => settings.short_present3 = true,
-            Opt::Long(b"present1") => settings.long_present1 = true,
-            Opt::Long(b"present2") => settings.long_present2 = true,
-            Opt::Long(b"present3") => settings.long_present3 = true,
-            Opt::Short(b'4') => settings.short_value1 = Some(opts.value().unwrap()),
-            Opt::Short(b'5') => settings.short_value2 = Some(opts.value().unwrap()),
-            Opt::Short(b'6') => settings.short_value3 = Some(opts.value().unwrap()),
-            Opt::Long(b"val1") => settings.long_value1 = Some(opts.value().unwrap()),
-            Opt::Long(b"val2") => settings.long_value2 = Some(opts.value().unwrap()),
-            Opt::Long(b"val3") => settings.long_value3 = Some(opts.value().unwrap()),
+            Opt::Short('1') => settings.short_present1 = true,
+            Opt::Short('2') => settings.short_present2 = true,
+            Opt::Short('3') => settings.short_present3 = true,
+            Opt::Long("present1") => settings.long_present1 = true,
+            Opt::Long("present2") => settings.long_present2 = true,
+            Opt::Long("present3") => settings.long_present3 = true,
+            Opt::Short('4') => settings.short_value1 = Some(opts.value().unwrap()),
+            Opt::Short('5') => settings.short_value2 = Some(opts.value().unwrap()),
+            Opt::Short('6') => settings.short_value3 = Some(opts.value().unwrap()),
+            Opt::Long("val1") => settings.long_value1 = Some(opts.value().unwrap()),
+            Opt::Long("val2") => settings.long_value2 = Some(opts.value().unwrap()),
+            Opt::Long("val3") => settings.long_value3 = Some(opts.value().unwrap()),
+            _ => {}
+        }
+    }
+
+    settings
+}
+
+#[inline(never)]
+fn getargs5o<'arg, I: Iterator<Item = &'arg OsStr>>(iter: I) -> Settings<&'arg OsStr> {
+    use getargs::{Opt, Options};
+
+    let mut settings = Settings::default();
+    let mut opts = Options::new(iter);
+
+    while let Some(opt) = opts.next_opt().unwrap() {
+        match opt {
+            Opt::Short('1') => settings.short_present1 = true,
+            Opt::Short('2') => settings.short_present2 = true,
+            Opt::Short('3') => settings.short_present3 = true,
+            Opt::Long("present1") => settings.long_present1 = true,
+            Opt::Long("present2") => settings.long_present2 = true,
+            Opt::Long("present3") => settings.long_present3 = true,
+            Opt::Short('4') => settings.short_value1 = Some(opts.value().unwrap()),
+            Opt::Short('5') => settings.short_value2 = Some(opts.value().unwrap()),
+            Opt::Short('6') => settings.short_value3 = Some(opts.value().unwrap()),
+            Opt::Long("val1") => settings.long_value1 = Some(opts.value().unwrap()),
+            Opt::Long("val2") => settings.long_value2 = Some(opts.value().unwrap()),
+            Opt::Long("val3") => settings.long_value3 = Some(opts.value().unwrap()),
             _ => {}
         }
     }
@@ -129,7 +156,14 @@ fn main() {
 
     let d = Instant::now();
 
+    for _ in 0..ITERATIONS {
+        black_box(getargs5o(ARGS.iter().copied().map(AsRef::as_ref)));
+    }
+
+    let e = Instant::now();
+
     eprintln!("getargs4:  {}ns", (b - a).as_nanos() / ITERATIONS as u128);
     eprintln!("getargs5:  {}ns", (c - b).as_nanos() / ITERATIONS as u128);
     eprintln!("getargs5b: {}ns", (d - c).as_nanos() / ITERATIONS as u128);
+    eprintln!("getargs5o: {}ns", (e - d).as_nanos() / ITERATIONS as u128);
 }

@@ -1,3 +1,5 @@
+use std::ffi::OsStr;
+
 use super::*;
 
 #[test]
@@ -412,21 +414,21 @@ fn bytes() {
 
     let mut opts = Options::new(args.into_iter());
 
-    assert_eq!(opts.next_opt(), Ok(Some(Opt::Short(b'o'))));
+    assert_eq!(opts.next_opt(), Ok(Some(Opt::Short('o'))));
     assert_eq!(opts.value(), Ok(b"hi".as_slice()));
-    assert_eq!(opts.next_opt(), Ok(Some(Opt::Long(b"opt".as_slice()))));
+    assert_eq!(opts.next_opt(), Ok(Some(Opt::Long("opt"))));
     assert_eq!(opts.value(), Ok(b"HI".as_slice()));
-    assert_eq!(opts.next_opt(), Ok(Some(Opt::Short(b'o'))));
+    assert_eq!(opts.next_opt(), Ok(Some(Opt::Short('o'))));
     assert_eq!(opts.value(), Ok(b"hi".as_slice()));
-    assert_eq!(opts.next_opt(), Ok(Some(Opt::Long(b"opt".as_slice()))));
+    assert_eq!(opts.next_opt(), Ok(Some(Opt::Long("opt"))));
     assert_eq!(opts.value(), Ok(b"hi".as_slice()));
-    assert_eq!(opts.next_opt(), Ok(Some(Opt::Long(b"optional".as_slice()))));
+    assert_eq!(opts.next_opt(), Ok(Some(Opt::Long("optional"))));
     assert_eq!(opts.value_opt(), None);
-    assert_eq!(opts.next_opt(), Ok(Some(Opt::Long(b"optional".as_slice()))));
+    assert_eq!(opts.next_opt(), Ok(Some(Opt::Long("optional"))));
     assert_eq!(opts.value_opt(), Some(b"value".as_slice()));
-    assert_eq!(opts.next_opt(), Ok(Some(Opt::Short(b'O'))));
+    assert_eq!(opts.next_opt(), Ok(Some(Opt::Short('O'))));
     assert_eq!(opts.value_opt(), None);
-    assert_eq!(opts.next_opt(), Ok(Some(Opt::Short(b'O'))));
+    assert_eq!(opts.next_opt(), Ok(Some(Opt::Short('O'))));
     assert_eq!(opts.value_opt(), Some(b"value".as_slice()));
     assert_eq!(opts.next_opt(), Ok(None));
     assert!(opts.opts_ended());
@@ -572,5 +574,50 @@ fn repeating_iterator() {
     assert_eq!(opts.next_positional(), None);
     assert_eq!(opts.next_positional(), None);
     assert_eq!(opts.next_positional(), None);
+    assert!(opts.is_empty());
+}
+
+#[test]
+fn os_str() {
+    let args = [
+        "-ohi",
+        "--opt=HI",
+        "-o",
+        "hi",
+        "--opt",
+        "hi",
+        "--optional",
+        "--optional=value",
+        "-O",
+        "-Ovalue",
+        "--",
+        "one",
+        "two",
+    ];
+
+    let mut opts = Options::<'_, &OsStr, _>::new(args.into_iter().map(AsRef::as_ref));
+
+    assert_eq!(opts.next_opt(), Ok(Some(Opt::Short('o'))));
+    assert_eq!(opts.value(), Ok("hi".as_ref()));
+    assert_eq!(opts.next_opt(), Ok(Some(Opt::Long("opt"))));
+    assert_eq!(opts.value(), Ok("HI".as_ref()));
+    assert_eq!(opts.next_opt(), Ok(Some(Opt::Short('o'))));
+    assert_eq!(opts.value(), Ok("hi".as_ref()));
+    assert_eq!(opts.next_opt(), Ok(Some(Opt::Long("opt"))));
+    assert_eq!(opts.value(), Ok("hi".as_ref()));
+    assert_eq!(opts.next_opt(), Ok(Some(Opt::Long("optional"))));
+    assert_eq!(opts.value_opt(), None);
+    assert_eq!(opts.next_opt(), Ok(Some(Opt::Long("optional"))));
+    assert_eq!(opts.value_opt(), Some("value".as_ref()));
+    assert_eq!(opts.next_opt(), Ok(Some(Opt::Short('O'))));
+    assert_eq!(opts.value_opt(), None);
+    assert_eq!(opts.next_opt(), Ok(Some(Opt::Short('O'))));
+    assert_eq!(opts.value_opt(), Some("value".as_ref()));
+    assert_eq!(opts.next_opt(), Ok(None));
+    assert!(opts.opts_ended());
+    assert_eq!(opts.next_positional(), Some("one".as_ref()));
+    assert_eq!(opts.next_positional(), Some("two".as_ref()));
+    assert_eq!(opts.next_positional(), None);
+    assert!(opts.opts_ended());
     assert!(opts.is_empty());
 }

@@ -8,17 +8,17 @@ use crate::{Arg, Argument};
 /// [`Options::next_opt`][crate::Options::next_opt] and represents a
 /// short or long command-line option name (but not value).
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
-pub enum Opt<A: Argument> {
+pub enum Opt<'str> {
     /// A short option, like `-f`. Does not include the leading `-`.
-    Short(A::ShortOpt),
+    Short(char),
     /// A long option, like `--file`. Does not include the leading `--`.
-    Long(A),
+    Long(&'str str),
 }
 
-impl<A: Argument> TryFrom<Arg<A>> for Opt<A> {
+impl<'str, A: Argument> TryFrom<Arg<'str, A>> for Opt<'str> {
     type Error = ();
 
-    fn try_from(value: Arg<A>) -> Result<Self, Self::Error> {
+    fn try_from(value: Arg<'str, A>) -> Result<Self, Self::Error> {
         match value {
             Arg::Short(short) => Ok(Self::Short(short)),
             Arg::Long(long) => Ok(Self::Long(long)),
@@ -27,7 +27,7 @@ impl<A: Argument> TryFrom<Arg<A>> for Opt<A> {
     }
 }
 
-impl<S: Display, A: Argument<ShortOpt = S> + Display> Display for Opt<A> {
+impl Display for Opt<'_> {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
         match self {
             Opt::Short(c) => write!(f, "-{}", c),

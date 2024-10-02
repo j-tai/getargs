@@ -1,6 +1,6 @@
 use core::fmt::{Display, Formatter};
 
-use crate::{Argument, Opt};
+use crate::{traits::ConversionError, Argument, Opt};
 
 /// An argument parsing error.
 ///
@@ -22,13 +22,13 @@ use crate::{Argument, Opt};
 ///   been.
 #[non_exhaustive]
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub enum Error<A: Argument> {
+pub enum Error<'opt, A: Argument> {
     /// The option requires a value, but one was not supplied.
     ///
     /// This error is returned when a call to
     /// [`Options::value`][crate::Options::value`] does not find any
     /// value to provide.
-    RequiresValue(Opt<A>),
+    RequiresValue(Opt<'opt>),
 
     /// The option does not require a value, but one was supplied.
     ///
@@ -36,21 +36,32 @@ pub enum Error<A: Argument> {
     /// [`Options::next_opt`][crate::Options::next_opt] or
     /// [`Options::next_arg`][crate::Options::next_arg] is called
     /// without the value being consumed.
-    DoesNotRequireValue(Opt<A>),
+    DoesNotRequireValue(Opt<'opt>),
+
+    /// The option was not a valid sequence of UTF-8 bytes.
+    ConversionError(ConversionError<A>),
 }
 
-impl<'arg, S: Display, A: Argument<ShortOpt = S> + Display + 'arg> Display for Error<A> {
+impl<A: Argument> From<ConversionError<A>> for Error<'_, A> {
+    fn from(value: ConversionError<A>) -> Self {
+        Self::ConversionError(value)
+    }
+}
+
+impl<A: Argument> Display for Error<'_, A> {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
         match self {
-            Error::RequiresValue(opt) => write!(f, "option requires a value: {}", opt),
+            Error::RequiresValue(opt) => write!(f, "option '{}' requires a value", opt),
             Error::DoesNotRequireValue(opt) => {
-                write!(f, "option does not require a value: {}", opt)
+                write!(f, "option '{}' does not expect a value", opt)
             }
+
+            Error::ConversionError(e) => e.fmt(f),
         }
     }
 }
 
 #[cfg(feature = "std")]
-impl<'arg, S: Display, A: Argument<ShortOpt = S> + Display + 'arg> std::error::Error for Error<A> {}
+impl<A: Argument> std::error::Error for Error<'_, A> {}
 
-pub type Result<A, T> = core::result::Result<T, Error<A>>;
+pub type Result<'opt, A, T> = core::result::Result<T, Error<'opt, A>>;

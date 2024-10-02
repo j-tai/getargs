@@ -9,8 +9,8 @@ fn main() {
 }
 
 fn parse<'arg, I: Iterator<Item = &'arg str>>(
-    opts: &mut Options<&'arg str, I>,
-) -> Result<&'arg str, ()> {
+    opts: &mut Options<'arg, &'arg str, I>,
+) -> Result<'arg, &'arg str, ()> {
     while let Some(opt) = opts.next_opt()? {
         println!("option for base command: {opt}");
     }
@@ -27,8 +27,8 @@ fn parse<'arg, I: Iterator<Item = &'arg str>>(
 }
 
 fn parse_run<'arg, I: Iterator<Item = &'arg str>>(
-    opts: &mut Options<&'arg str, I>,
-) -> Result<&'arg str, ()> {
+    opts: &mut Options<'arg, &'arg str, I>,
+) -> Result<'arg, &'arg str, ()> {
     while let Some(opt) = opts.next_opt()? {
         match opt {
             Opt::Short('r') | Opt::Long("release") => println!("release mode"),
@@ -42,8 +42,8 @@ fn parse_run<'arg, I: Iterator<Item = &'arg str>>(
 }
 
 fn parse_test<'arg, I: Iterator<Item = &'arg str>>(
-    opts: &mut Options<&'arg str, I>,
-) -> Result<&'arg str, ()> {
+    opts: &mut Options<'arg, &'arg str, I>,
+) -> Result<'arg, &'arg str, ()> {
     while let Some(opt) = opts.next_opt()? {
         match opt {
             Opt::Long("test") => {

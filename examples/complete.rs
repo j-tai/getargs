@@ -9,17 +9,17 @@ enum UsageError<'a> {
     Help,
     /// Error from getargs
     #[error("{0}")]
-    Getargs(getargs::Error<&'a str>),
+    Getargs(getargs::Error<'a, &'a str>),
     #[error("unknown option {0}")]
-    UnknownOption(Opt<&'a str>),
+    UnknownOption(Opt<'a>),
     #[error("unknown subcommand {0:?}")]
     UnknownSubcommand(&'a str),
     #[error("missing subcommand")]
     MissingSubcommand,
 }
 
-impl<'a> From<getargs::Error<&'a str>> for UsageError<'a> {
-    fn from(e: Error<&'a str>) -> Self {
+impl<'a> From<getargs::Error<'a, &'a str>> for UsageError<'a> {
+    fn from(e: Error<'a, &'a str>) -> Self {
         UsageError::Getargs(e)
     }
 }
@@ -46,7 +46,7 @@ enum Subcommand<'a> {
 
 /// Parse all the arguments
 fn parse_args<'a, I: Iterator<Item = &'a str>>(
-    opts: &mut Options<&'a str, I>,
+    opts: &mut Options<'a, &'a str, I>,
 ) -> Result<Arguments<'a>, UsageError<'a>> {
     let mut verbosity = 0;
 
@@ -76,7 +76,7 @@ fn parse_args<'a, I: Iterator<Item = &'a str>>(
 
 /// Parse the arguments for the 'create' subcommand
 fn parse_create_args<'a, I: Iterator<Item = &'a str>>(
-    opts: &mut Options<&'a str, I>,
+    opts: &mut Options<'a, &'a str, I>,
 ) -> Result<Subcommand<'a>, UsageError<'a>> {
     let mut output = None;
     while let Some(opt) = opts.next_opt()? {
@@ -92,7 +92,7 @@ fn parse_create_args<'a, I: Iterator<Item = &'a str>>(
 
 /// Parse the arguments for the 'delete' subcommand
 fn parse_delete_args<'a, I: Iterator<Item = &'a str>>(
-    opts: &mut Options<&'a str, I>,
+    opts: &mut Options<'a, &'a str, I>,
 ) -> Result<Subcommand<'a>, UsageError<'a>> {
     let mut backup = None;
     while let Some(opt) = opts.next_opt()? {
