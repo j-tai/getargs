@@ -40,7 +40,7 @@ optional value.
         }
     }
 
-    for arg in opts.positionals() {
+    for arg in opts.positionals().unwrap() {
         eprintln!("positional: {:?}", arg)
     }
 }

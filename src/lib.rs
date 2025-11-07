@@ -105,7 +105,7 @@
 //! // ...
 //! let mut opts = Options::new(args);
 //! #
-//! # assert_eq!(opts.next_positional(), None);
+//! # assert_eq!(opts.next_positional(), Ok(None));
 //! ```
 //!
 //! ## Accepting options at the start
@@ -144,7 +144,7 @@
 //! mutability would make this possible, but it is difficult to find an
 //! API design that does not sacrifice performance.
 //!
-//! After each [`Opt`], you can choose to do one of three things:
+//! After each [`Opt`], you can choose to do one of four things:
 //!
 //! - Call [`Options::value`], which will declare that the option
 //!   requires a value, and return it or [`Error::RequiresValue`].
@@ -152,9 +152,13 @@
 //! - Call [`Options::value_opt`], which will declare that the option
 //!   may have an *optional* value, and return the value, if any.
 //!
+//! - Call [`Options::no_value`], which will declare that the option
+//!   should not have a value, and return an [`Error::RequiresNoValue`]
+//!   if an explicit value is found.
+//!
 //! - Do nothing before the next call to `next_opt`, which will assume
-//!   that the option should not have a value (and return an
-//!   [`Error::DoesNotRequireValue`] if an explicit value is found).
+//!   that the option should not have a value and return an
+//!   [`Error::RequiresNoValue`] if an explicit value is found.
 //!
 //! [`Options::next_opt`] will return `Ok(None)` when there are no
 //! arguments left, or when `--` is encountered. Once that happens, you
@@ -350,8 +354,8 @@ pub use traits::Argument;
 /// assert_eq!(opts.next_opt(), Ok(None));
 ///
 /// // Don't forget the positional arguments!
-/// assert_eq!(opts.next_positional(), Some("foo"));
-/// assert_eq!(opts.next_positional(), None);
+/// assert_eq!(opts.next_positional(), Ok(Some("foo")));
+/// assert_eq!(opts.next_positional(), Ok(None));
 /// ```
 ///
 /// Retrieving values from options:
@@ -368,8 +372,8 @@ pub use traits::Argument;
 /// assert_eq!(opts.value(), Ok("value2"));
 /// assert_eq!(opts.next_opt(), Ok(Some(Opt::Short('v'))));
 /// assert_eq!(opts.next_opt(), Ok(None));
-/// assert_eq!(opts.next_positional(), Some("foo"));
-/// assert_eq!(opts.next_positional(), None);
+/// assert_eq!(opts.next_positional(), Ok(Some("foo")));
+/// assert_eq!(opts.next_positional(), Ok(None));
 /// ```
 ///
 /// Parsing options anywhere:
@@ -427,7 +431,7 @@ enum State<A: Argument> {
     End { ended_opts: bool },
 }
 
-impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
+impl<A: Argument, I: Iterator<Item = A>> Options<A, I> {
     /// Creates a new [`Options`] given an iterator over arguments of
     /// type [`A`][Argument].
     ///
@@ -462,14 +466,10 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
     pub fn next_opt(&'_ mut self) -> Result<A, Option<Opt<A>>> {
         match self.state {
             State::Start { .. } | State::EndOfOption(_) => {
-                let next = self.iter.next();
-
-                if next.is_none() {
+                let Some(arg) = self.iter.next() else {
                     self.state = State::End { ended_opts: false };
                     return Ok(None);
-                }
-
-                let arg = next.unwrap();
+                };
 
                 if arg.ends_opts() {
                     self.state = State::Start { ended_opts: true };
@@ -516,7 +516,7 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
 
             State::LongOptionWithValue(opt, _) => {
                 self.state = State::Start { ended_opts: false };
-                Err(Error::DoesNotRequireValue(opt))
+                Err(Error::RequiresNoValue(opt))
             }
 
             State::Positional(_) | State::End { .. } => Ok(None),
@@ -526,10 +526,6 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
     /// Retrieves the next *argument*. An *argument* is represented by
     /// [`Arg`] and defined as either an option ([`Opt`]) or a
     /// positional argument.
-    ///
-    /// # Panics
-    ///
-    /// Panics if [`Options::next_opt`] does.
     ///
     /// # Example
     ///
@@ -569,7 +565,7 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
             }
         }
 
-        Ok(self.next_positional().map(Arg::Positional))
+        Ok(self.next_positional()?.map(Arg::Positional))
     }
 
     /// Retrieves the value passed to the option last returned by
@@ -686,10 +682,54 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
         }
     }
 
-    /// Retrieves the next positional argument. This method must be
-    /// called after all the last option has been fully parsed. Usually,
-    /// this is when [`Options::next_opt`] returns `Ok(None)`, but it
-    /// can also be after calling [`Options::value_opt`].
+    /// Declares that the option last returned by [`Options::next_opt`] or
+    /// [`Options::next_arg`] should not have a value, and returns
+    /// [`Error::RequiresNoValue`] if an explicit value was specified.
+    /// That includes short options; e.g. calling this method after
+    /// parsing the `a` of `-abc` will assume `bc` was intended as an
+    /// explicit value of `a`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use getargs::{Opt, Options, Error};
+    /// #
+    /// let args = ["--opt=value", "--other-flag", "--opt", "--opt=other", "-o", "-ovalue"];
+    /// let mut opts = Options::new(args.into_iter());
+    ///
+    /// assert_eq!(opts.next_opt(), Ok(Some(Opt::Long("opt"))));
+    /// assert_eq!(opts.no_value(), Err(Error::RequiresNoValue(Opt::Long("opt"))));
+    /// assert_eq!(opts.next_opt(), Ok(Some(Opt::Long("other-flag"))));
+    /// assert_eq!(opts.no_value(), Ok(()));
+    /// assert_eq!(opts.next_opt(), Ok(Some(Opt::Long("opt"))));
+    /// assert_eq!(opts.no_value(), Ok(()));
+    /// assert_eq!(opts.next_opt(), Ok(Some(Opt::Long("opt"))));
+    /// assert_eq!(opts.no_value(), Err(Error::RequiresNoValue(Opt::Long("opt"))));
+    /// assert_eq!(opts.next_opt(), Ok(Some(Opt::Short('o'))));
+    /// assert_eq!(opts.no_value(), Ok(()));
+    /// assert_eq!(opts.next_opt(), Ok(Some(Opt::Short('o'))));
+    /// assert_eq!(opts.no_value(), Err(Error::RequiresNoValue(Opt::Short('o'))));
+    /// assert_eq!(opts.next_opt(), Ok(None));
+    /// ```
+    pub fn no_value(&'_ mut self) -> Result<A, ()> {
+        match self.state {
+            State::Start { .. } | State::Positional(_) | State::End { .. } => {
+                panic!("called Options::no_value() with no previous option")
+            }
+
+            State::EndOfOption(_) => Ok(()),
+
+            State::ShortOptionCluster(opt, _) | State::LongOptionWithValue(opt, _) => {
+                self.state = State::Start { ended_opts: false };
+                Err(Error::RequiresNoValue(opt))
+            }
+        }
+    }
+
+    /// Retrieves the next positional argument.
+    ///
+    /// This method may return [`Error::RequiresNoValue`] if the last
+    /// option has an unconsumed explicit value.
     ///
     /// After this method is called, you can parse further options with
     /// [`Options::next_opt`] or continue getting positional arguments
@@ -697,17 +737,7 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
     ///
     /// This method preserves the state of [`Options::opts_ended`].
     ///
-    /// # Panics
-    ///
-    /// This method panics if the option parsing is not yet complete;
-    /// that is, it can panic if [`Options::next_opt`] has not yet
-    /// returned `None` at least once. If [`Options::next_opt`] returns
-    /// `None`, then [`Options::next_positional`] will always be safe to
-    /// call.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
+    /// # Example
     ///
     /// ```
     /// # use getargs::{Opt, Options};
@@ -717,27 +747,43 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
     ///
     /// assert_eq!(opts.next_opt(), Ok(Some(Opt::Short('a'))));
     /// assert_eq!(opts.next_opt(), Ok(None));
-    /// assert_eq!(opts.next_positional(), Some("foo"));
-    /// assert_eq!(opts.next_positional(), Some("bar"));
-    /// assert_eq!(opts.next_positional(), None);
+    /// assert_eq!(opts.next_positional(), Ok(Some("foo")));
+    /// assert_eq!(opts.next_positional(), Ok(Some("bar")));
+    /// assert_eq!(opts.next_positional(), Ok(None));
     /// ```
-    pub fn next_positional(&'_ mut self) -> Option<A> {
+    pub fn next_positional(&mut self) -> Result<A, Option<A>> {
         match self.state {
-            State::Start { ended_opts } => self.iter.next().or_else(|| {
-                self.state = State::End { ended_opts };
-                None
-            }),
+            State::Start { ended_opts } => {
+                if let Some(next) = self.iter.next() {
+                    self.state = State::Start { ended_opts };
+                    Ok(Some(next))
+                } else {
+                    self.state = State::End { ended_opts };
+                    Ok(None)
+                }
+            }
 
             State::Positional(arg) => {
                 self.state = State::Start { ended_opts: false };
-                Some(arg)
+                Ok(Some(arg))
             }
 
-            State::End { .. } => None,
-
-            _ => {
-                panic!("called Options::next_positional() while option parsing hasn't finished")
+            State::EndOfOption(_) => {
+                if let Some(next) = self.iter.next() {
+                    self.state = State::Start { ended_opts: false };
+                    Ok(Some(next))
+                } else {
+                    self.state = State::End { ended_opts: false };
+                    Ok(None)
+                }
             }
+
+            State::ShortOptionCluster(opt, _) | State::LongOptionWithValue(opt, _) => {
+                self.state = State::Start { ended_opts: false };
+                Err(Error::RequiresNoValue(opt))
+            }
+
+            State::End { .. } => Ok(None)
         }
     }
 
@@ -745,10 +791,9 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
     /// [`Options`]. The returned iterator will forward
     /// [`Iterator::next`] calls to [`Options::next_positional`].
     ///
-    /// This method does not panic, but [`Iterator::next`] may panic
-    /// once it is called if option parsing has not finished
-    /// ([`Options::next_opt`] has not returned `Ok(None)`). The exact
-    /// requirements are the same as [`Options::next_positional`].
+    /// This method may return [`Error::RequiresNoValue`] if the last
+    /// option has an unconsumed explicit value. The exact requirements
+    /// are the same as [`Options::next_positional`].
     ///
     /// # Example
     ///
@@ -761,14 +806,19 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
     /// assert_eq!(opts.next_opt(), Ok(Some(Opt::Long("flag"))));
     /// assert_eq!(opts.next_opt(), Ok(None));
     ///
-    /// let mut args = opts.positionals();
+    /// let mut args = opts.positionals().unwrap();
     ///
     /// assert_eq!(args.next(), Some("one"));
     /// assert_eq!(args.next(), Some("two"));
     /// assert_eq!(args.next(), None);
     /// ```
-    pub fn positionals(&mut self) -> Positionals<A, I> {
-        Positionals::new(self)
+    pub fn positionals<'opts>(&'opts mut self) -> Result<A, Positionals<'opts, A, I>> {
+        if let State::ShortOptionCluster(opt, _) | State::LongOptionWithValue(opt, _) = self.state {
+            self.state = State::Start { ended_opts: false };
+            Err(Error::RequiresNoValue(opt))
+        } else {
+            Ok(Positionals::new(self))
+        }
     }
 
     /// Consumes this [`Options`], returning an iterator over the rest
@@ -801,10 +851,10 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
             State::Start { .. } | State::EndOfOption(_) | State::End { .. } => {
                 IntoPositionals::new(None, self.iter)
             }
+
             State::Positional(positional) => IntoPositionals::new(Some(positional), self.iter),
-            _ => {
-                panic!("called Options::into_positionals() while option parsing hasn't finished")
-            }
+
+            _ => panic!("called Options::into_positionals() while option parsing hasn't finished")
         }
     }
 
@@ -827,7 +877,7 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
     /// assert_eq!(opts.next_opt(), Ok(Some(Opt::Short('a'))));
     /// assert_eq!(opts.next_opt(), Ok(Some(Opt::Short('b'))));
     /// assert_eq!(opts.next_opt(), Ok(None));
-    /// assert_eq!(opts.next_positional(), Some("foo"));
+    /// assert_eq!(opts.next_positional(), Ok(Some("foo")));
     ///
     /// // `Options::next_opt` returned `None` because of `foo` (non-option)
     /// assert!(!opts.opts_ended());
@@ -839,11 +889,11 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
     /// assert!(opts.opts_ended());
     ///
     /// // Even after an argument is consumed, `opts_ended` remembers
-    /// assert_eq!(opts.next_positional(), Some("bar"));
+    /// assert_eq!(opts.next_positional(), Ok(Some("bar")));
     /// assert!(opts.opts_ended());
-    /// assert_eq!(opts.next_positional(), Some("-e"));
-    /// assert_eq!(opts.next_positional(), Some("-f"));
-    /// assert_eq!(opts.next_positional(), None);
+    /// assert_eq!(opts.next_positional(), Ok(Some("-e")));
+    /// assert_eq!(opts.next_positional(), Ok(Some("-f")));
+    /// assert_eq!(opts.next_positional(), Ok(None));
     /// assert!(opts.opts_ended());
     /// ```
     pub fn opts_ended(&self) -> bool {
@@ -895,9 +945,8 @@ impl<'arg, A: Argument + 'arg, I: Iterator<Item = A>> Options<A, I> {
             State::End { .. } => {
                 self.state = State::Start { ended_opts: false };
             }
-            _ => {
-                panic!("called Options::restart() during an iteration")
-            }
+
+            _ => panic!("called Options::restart() during an iteration")
         }
     }
 }

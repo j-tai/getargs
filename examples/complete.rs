@@ -60,7 +60,7 @@ fn parse_args<'a, I: Iterator<Item = &'a str>>(
     }
 
     let subcommand_name = opts
-        .next_positional()
+        .next_positional()?
         .ok_or(UsageError::MissingSubcommand)?;
     let subcommand = match subcommand_name {
         "c" | "create" => parse_create_args(opts)?,
@@ -86,7 +86,7 @@ fn parse_create_args<'a, I: Iterator<Item = &'a str>>(
         }
     }
 
-    let args = opts.positionals().collect();
+    let args = opts.positionals()?.collect();
     Ok(Subcommand::Create { output, args })
 }
 
@@ -104,7 +104,7 @@ fn parse_delete_args<'a, I: Iterator<Item = &'a str>>(
         }
     }
 
-    let args = opts.positionals().collect();
+    let args = opts.positionals()?.collect();
     Ok(Subcommand::Delete { backup, args })
 }
 
