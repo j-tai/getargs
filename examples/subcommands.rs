@@ -15,7 +15,7 @@ fn parse<'arg, I: Iterator<Item = &'arg str>>(
         println!("option for base command: {opt}");
     }
 
-    let subcommand = opts.next_positional();
+    let subcommand = opts.next_positional()?;
     println!("subcommand: {subcommand:?}");
     match subcommand {
         None => println!("no subcommand"),
@@ -35,7 +35,7 @@ fn parse_run<'arg, I: Iterator<Item = &'arg str>>(
             _ => println!("'run' subcommand got unknown option {opt:?}"),
         }
     }
-    for pos in opts.positionals() {
+    for pos in opts.positionals()? {
         println!("positional arg: {pos}");
     }
     Ok(())
@@ -53,7 +53,7 @@ fn parse_test<'arg, I: Iterator<Item = &'arg str>>(
             _ => println!("'test' subcommand got unknown option {opt:?}"),
         }
     }
-    for pos in opts.positionals() {
+    for pos in opts.positionals()? {
         println!("positional arg: {pos}");
     }
     Ok(())

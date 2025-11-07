@@ -23,7 +23,7 @@ fn main() {
         }
     }
 
-    for positional in opts.positionals() {
+    for positional in opts.positionals().expect("calling Options::positionals") {
         eprintln!("positional argument: {}", positional);
     }
 }

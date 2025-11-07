@@ -18,7 +18,7 @@ impl<'opts, A: Argument, I: Iterator<Item = A>> Iterator for Positionals<'opts, 
     type Item = A;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next_positional()
+        self.inner.next_positional().unwrap()
     }
 }
 

@@ -36,14 +36,14 @@ pub enum Error<A: Argument> {
     /// [`Options::next_opt`][crate::Options::next_opt] or
     /// [`Options::next_arg`][crate::Options::next_arg] is called
     /// without the value being consumed.
-    DoesNotRequireValue(Opt<A>),
+    RequiresNoValue(Opt<A>),
 }
 
 impl<'arg, S: Display, A: Argument<ShortOpt = S> + Display + 'arg> Display for Error<A> {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
         match self {
             Error::RequiresValue(opt) => write!(f, "option requires a value: {}", opt),
-            Error::DoesNotRequireValue(opt) => {
+            Error::RequiresNoValue(opt) => {
                 write!(f, "option does not require a value: {}", opt)
             }
         }
