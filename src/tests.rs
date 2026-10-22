@@ -229,6 +229,27 @@ fn lone_dash() {
 }
 
 #[test]
+fn empty_long_option_name() {
+    let args = ["-a", "--=value", "-b"];
+    let mut opts = Options::new(args.into_iter());
+    assert_eq!(opts.next_opt(), Ok(Some(Opt::Short('a'))));
+    assert_eq!(opts.next_opt(), Ok(None));
+    assert_eq!(opts.next_positional(), Some("--=value"));
+    assert_eq!(opts.next_opt(), Ok(Some(Opt::Short('b'))));
+    assert_eq!(opts.next_opt(), Ok(None));
+    assert!(opts.is_empty());
+
+    let args: [&[u8]; 3] = [b"-a", b"--=value", b"-b"];
+    let mut opts = Options::new(args.into_iter());
+    assert_eq!(opts.next_opt(), Ok(Some(Opt::Short(b'a'))));
+    assert_eq!(opts.next_opt(), Ok(None));
+    assert_eq!(opts.next_positional(), Some(&b"--=value"[..]));
+    assert_eq!(opts.next_opt(), Ok(Some(Opt::Short(b'b'))));
+    assert_eq!(opts.next_opt(), Ok(None));
+    assert!(opts.is_empty());
+}
+
+#[test]
 fn subcommand() {
     let args = ["-a", "cmd", "-b", "arg"];
     let mut opts = Options::new(args.into_iter());
