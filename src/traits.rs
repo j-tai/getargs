@@ -44,7 +44,8 @@ pub trait Argument: Copy + Eq + Debug {
     /// result of the parsing operation, with the leading `--` stripped.
     ///
     /// A long option is defined as an argument that follows the pattern
-    /// `--flag` or `--flag=VALUE`, where `VALUE` may be empty.
+    /// `--flag` or `--flag=VALUE`, where `VALUE` may be empty but
+    /// `flag` may not.
     ///
     /// # Example
     ///
@@ -53,6 +54,7 @@ pub trait Argument: Copy + Eq + Debug {
     /// assert_eq!("--flag".parse_long_opt(), Some(("flag", None)));
     /// assert_eq!("--flag=value".parse_long_opt(), Some(("flag", Some("value"))));
     /// assert_eq!("--flag=".parse_long_opt(), Some(("flag", Some(""))));
+    /// assert_eq!("--=value".parse_long_opt(), None);
     /// assert_eq!("-a".parse_long_opt(), None);
     /// ```
     fn parse_long_opt(self) -> Option<(Self, Option<Self>)>;
@@ -73,9 +75,11 @@ pub trait Argument: Copy + Eq + Debug {
     /// [`consume_short_opt`][Self::consume_short_opt] or
     /// [`consume_short_val`][Self::consume_short_val].
     ///
-    /// This method does not need to guard against `--` long options.
     /// [`parse_long_opt`][Self::parse_long_opt] will be called first by
-    /// [`Options::next_opt`][crate::Options::next_opt].
+    /// [`Options::next_opt`][crate::Options::next_opt], so this method
+    /// only sees arguments starting with `--` when they are not valid
+    /// long options (like `--=value`). Those should return `None` so
+    /// that they are treated as positional arguments.
     ///
     /// # Example
     ///
@@ -84,6 +88,7 @@ pub trait Argument: Copy + Eq + Debug {
     /// assert_eq!("-abc".parse_short_cluster(), Some("abc"));
     /// assert_eq!("-a".parse_short_cluster(), Some("a"));
     /// assert_eq!("-".parse_short_cluster(), None);
+    /// assert_eq!("--=value".parse_short_cluster(), None);
     /// ```
     fn parse_short_cluster(self) -> Option<Self>;
 
@@ -128,7 +133,9 @@ impl Argument for &'_ str {
         // Using iterators is slightly faster in release, but many times
         // (>400%) as slow in dev
 
-        let option = self.strip_prefix("--").filter(|s| !s.is_empty())?;
+        let option = self
+            .strip_prefix("--")
+            .filter(|s| !s.is_empty() && !s.starts_with('='))?;
 
         if let Some((option, value)) = option.split_once('=') {
             Some((option, Some(value)))
@@ -139,7 +146,8 @@ impl Argument for &'_ str {
 
     #[inline]
     fn parse_short_cluster(self) -> Option<Self> {
-        self.strip_prefix('-').filter(|s| !s.is_empty())
+        self.strip_prefix('-')
+            .filter(|s| !s.is_empty() && !s.starts_with('-'))
     }
 
     #[inline]
@@ -170,7 +178,9 @@ impl Argument for &'_ [u8] {
 
     #[inline]
     fn parse_long_opt(self) -> Option<(Self, Option<Self>)> {
-        let option = self.strip_prefix(b"--").filter(|a| !a.is_empty())?;
+        let option = self
+            .strip_prefix(b"--")
+            .filter(|a| !a.is_empty() && a[0] != b'=')?;
 
         // This is faster than iterators in dev
         let name = option.split(|b| *b == b'=').next().unwrap();
@@ -185,7 +195,8 @@ impl Argument for &'_ [u8] {
 
     #[inline]
     fn parse_short_cluster(self) -> Option<Self> {
-        self.strip_prefix(b"-").filter(|a| !a.is_empty())
+        self.strip_prefix(b"-")
+            .filter(|a| !a.is_empty() && a[0] != b'-')
     }
 
     #[inline]
